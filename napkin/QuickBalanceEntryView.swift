@@ -47,6 +47,7 @@ struct QuickBalanceEntryView: View {
                     dismiss()
                 }
                 .keyboardShortcut(.cancelAction)
+                .help("Cancel without saving changes (Esc)")
                 
                 Spacer()
                 
@@ -62,6 +63,7 @@ struct QuickBalanceEntryView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!hasAnyValidEntries)
                 .buttonStyle(.borderedProminent)
+                .help("Save all entered balances (⌘↩)")
             }
             .padding()
             .background(Color(NSColor.windowBackgroundColor))
@@ -85,6 +87,7 @@ struct QuickBalanceEntryView: View {
                         copyLastMonthBalances()
                     }
                     .buttonStyle(.bordered)
+                    .help("Copy balances from last month as starting values")
                 }
                 .padding()
                 .background(Color(NSColor.controlBackgroundColor))

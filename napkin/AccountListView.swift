@@ -28,7 +28,7 @@ struct AccountListView: View {
             accountList
         } detail: {
             if let selectedAccount {
-                AccountDetailView(account: selectedAccount)
+                AccountDetailView(account: selectedAccount, showingQuickBalanceEntry: $showingQuickBalanceEntry)
             } else {
                 VStack(spacing: 24) {
                     Spacer()
@@ -59,6 +59,7 @@ struct AccountListView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut("b", modifiers: .command)
+                    .help("Enter balances for all accounts at once (⌘B)")
                     
                     Spacer()
                 }
@@ -76,6 +77,14 @@ struct AccountListView: View {
         .sheet(isPresented: $showingQuickBalanceEntry) {
             QuickBalanceEntryView()
         }
+        .background(
+            // Hidden button to capture global keyboard shortcut
+            Button("") {
+                showingQuickBalanceEntry = true
+            }
+            .keyboardShortcut("b", modifiers: .command)
+            .opacity(0)
+        )
         .alert("Delete Account", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {
                 accountToDelete = nil
@@ -104,6 +113,13 @@ struct AccountListView: View {
                         ForEach(accountsForType) { account in
                             AccountRowView(account: account)
                                 .tag(account)
+                                .onTapGesture {
+                                    if selectedAccount == account {
+                                        selectedAccount = nil
+                                    } else {
+                                        selectedAccount = account
+                                    }
+                                }
                                 .contextMenu {
                                     if account.isActive {
                                         Button("Inactivate Account") {
@@ -126,19 +142,13 @@ struct AccountListView: View {
             }
         }
         .navigationTitle("Accounts")
-        .navigationSplitViewColumnWidth(min: 280, ideal: 320)
+        .navigationSplitViewColumnWidth(min: 350, ideal: 450)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: { showingQuickBalanceEntry = true }) {
-                    Label("Quick Balance Entry", systemImage: "square.and.pencil")
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            
             ToolbarItem(placement: .secondaryAction) {
                 Button(action: { showingAddAccount = true }) {
                     Label("Add Account", systemImage: "plus")
                 }
+                .help("Add a new account to track")
             }
             
             ToolbarItem(placement: .secondaryAction) {
@@ -150,6 +160,7 @@ struct AccountListView: View {
                     Label("Edit Account", systemImage: "pencil")
                 }
                 .disabled(selectedAccount == nil)
+                .help("Edit the selected account")
             }
             
             ToolbarItem(placement: .secondaryAction) {
@@ -159,6 +170,7 @@ struct AccountListView: View {
                     Label(showInactiveAccounts ? "Hide Inactive" : "Show Inactive", 
                           systemImage: showInactiveAccounts ? "eye.slash" : "eye")
                 }
+                .help(showInactiveAccounts ? "Hide inactive accounts" : "Show inactive accounts")
             }
         }
     }
@@ -193,6 +205,7 @@ struct AccountListView: View {
 
 struct AccountDetailView: View {
     let account: Account
+    @Binding var showingQuickBalanceEntry: Bool
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor(\BalanceEntry.entryDate, order: .reverse)])
     private var allBalanceEntries: [BalanceEntry]
@@ -201,8 +214,9 @@ struct AccountDetailView: View {
     @State private var selectedBalanceEntry: BalanceEntry?
     @State private var showingEditBalance = false
     
-    init(account: Account) {
+    init(account: Account, showingQuickBalanceEntry: Binding<Bool>) {
         self.account = account
+        self._showingQuickBalanceEntry = showingQuickBalanceEntry
     }
     
     private var balanceEntries: [BalanceEntry] {
@@ -343,18 +357,36 @@ struct AccountDetailView: View {
         }
         .navigationTitle(account.accountName)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("Add Balance") {
-                    showingAddBalance = true
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            
-            if !account.isActive {
-                ToolbarItem(placement: .secondaryAction) {
-                    Button("Reactivate") {
-                        reactivateAccount()
+            ToolbarItem(placement: .automatic) {
+                HStack {
+                    Spacer()
+                    
+                    if !account.isActive {
+                        Button("Reactivate") {
+                            reactivateAccount()
+                        }
+                        .buttonStyle(.bordered)
+                        .help("Reactivate this account")
                     }
+                    
+                    Button("Edit Balance") {
+                        showingAddBalance = true
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Add a new balance entry for this account")
+                    
+                    Button(action: { 
+                        showingQuickBalanceEntry = true
+                    }) {
+                        Text("Edit All")
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .background(Color.accentColor)
+                    .cornerRadius(6)
+                    .controlSize(.regular)
+                    .help("Enter balances for all accounts at once (⌘B)")
                 }
             }
         }
