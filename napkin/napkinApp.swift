@@ -12,7 +12,11 @@ import SwiftData
 struct napkinApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Account.self,
+            BalanceEntry.self,
+            GlobalSettings.self,
+            PaymentPlan.self,
+            PlannedPayment.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

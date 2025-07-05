@@ -1,0 +1,30 @@
+# Claude and project documentation files
+CLAUDE.md
+ROADMAP.md
+
+# Vim swap files
+*.swp
+*.swo
+
+# Temporary uploads and tracking files
+uploads/
+usage_tracking*.json
+
+# Xcode
+.DS_Store
+build/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
