@@ -22,6 +22,7 @@ struct SettingsView: View {
     @State private var alertMessage = ""
     @State private var isExporting = false
     @State private var isImporting = false
+    @State private var cleanImport = false
     
     private var currentSettings: GlobalSettings? {
         globalSettings.first
@@ -90,29 +91,46 @@ struct SettingsView: View {
                         
                         Divider()
                         
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Import Data")
-                                    .font(.headline)
-                                Text("Load financial data from a JSON file")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            Button(action: { showingImportPicker = true }) {
-                                HStack {
-                                    if isImporting {
-                                        ProgressView()
-                                            .scaleEffect(0.7)
-                                    } else {
-                                        Image(systemName: "square.and.arrow.down")
-                                    }
-                                    Text("Import")
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Import Data")
+                                        .font(.headline)
+                                    Text("Load financial data from a JSON file")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                                 }
+                                
+                                Spacer()
+                                
+                                Button(action: { showingImportPicker = true }) {
+                                    HStack {
+                                        if isImporting {
+                                            ProgressView()
+                                                .scaleEffect(0.7)
+                                        } else {
+                                            Image(systemName: "square.and.arrow.down")
+                                        }
+                                        Text("Import")
+                                    }
+                                }
+                                .disabled(isExporting || isImporting)
                             }
-                            .disabled(isExporting || isImporting)
+                            
+                            HStack {
+                                Toggle("Replace all existing data", isOn: $cleanImport)
+                                    .font(.caption)
+                                
+                                Spacer()
+                            }
+                            .padding(.leading, 8)
+                            
+                            if cleanImport {
+                                Text("⚠️ This will permanently delete all current data and replace it with the imported data. A backup will be created automatically.")
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                                    .padding(.leading, 8)
+                            }
                         }
                     }
                     .padding(.vertical, 8)
@@ -135,7 +153,7 @@ struct SettingsView: View {
             .background(Color(NSColor.windowBackgroundColor))
         }
         .navigationTitle("Settings")
-        .frame(width: 500, height: 350)
+        .frame(width: 500, height: 400)
         .onAppear {
             loadCurrentSettings()
         }
@@ -238,11 +256,16 @@ struct SettingsView: View {
         Task {
             do {
                 let importManager = DataImportManager(modelContext: modelContext)
-                let result = try await importManager.importData(from: url)
+                let result = try await importManager.importData(from: url, cleanImport: cleanImport)
                 
                 await MainActor.run {
                     isImporting = false
-                    showAlert(title: "Import Complete", message: "Successfully imported \(result.accountsImported) accounts, \(result.balanceEntriesImported) balance entries, and \(result.subscriptionsImported) subscriptions.")
+                    let message = if cleanImport {
+                        "Replaced all data with \(result.accountsImported) accounts, \(result.balanceEntriesImported) balance entries, and \(result.subscriptionsImported) subscriptions. Backup created automatically."
+                    } else {
+                        "Successfully imported \(result.accountsImported) accounts, \(result.balanceEntriesImported) balance entries, and \(result.subscriptionsImported) subscriptions."
+                    }
+                    showAlert(title: "Import Complete", message: message)
                 }
             } catch {
                 await MainActor.run {

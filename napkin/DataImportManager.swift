@@ -18,12 +18,17 @@ class DataImportManager {
     
     // MARK: - Import Data
     
-    func importData(from url: URL, mergeStrategy: ImportMergeStrategy = .merge) async throws -> ImportResult {
+    func importData(from url: URL, mergeStrategy: ImportMergeStrategy = .merge, cleanImport: Bool = false) async throws -> ImportResult {
         let napkinData = try await readDataFromFile(url)
         try validateImportData(napkinData)
         
         // Create backup before import
         try await createBackup()
+        
+        // If clean import, wipe existing data first
+        if cleanImport {
+            try await wipeAllData()
+        }
         
         return try await importValidatedData(napkinData, mergeStrategy: mergeStrategy)
     }
@@ -42,11 +47,29 @@ class DataImportManager {
             }
             
             return result
+        } catch let decodingError as DecodingError {
+            if hasAccess {
+                url.stopAccessingSecurityScopedResource()
+            }
+            
+            // Provide better error messages for JSON decoding issues
+            switch decodingError {
+            case .dataCorrupted(let context):
+                throw ImportError.invalidData("JSON parsing failed: \(context.debugDescription). Context: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
+            case .keyNotFound(let key, let context):
+                throw ImportError.invalidData("Missing required field '\(key.stringValue)' at: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
+            case .typeMismatch(let type, let context):
+                throw ImportError.invalidData("Type mismatch for '\(type)' at: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> ")). \(context.debugDescription)")
+            case .valueNotFound(let type, let context):
+                throw ImportError.invalidData("Expected value of type '\(type)' not found at: \(context.codingPath.map { $0.stringValue }.joined(separator: " -> "))")
+            @unknown default:
+                throw ImportError.invalidData("JSON decoding failed: \(decodingError.localizedDescription)")
+            }
         } catch {
             if hasAccess {
                 url.stopAccessingSecurityScopedResource()
             }
-            throw error
+            throw ImportError.invalidData("File reading failed: \(error.localizedDescription)")
         }
     }
     
@@ -408,6 +431,58 @@ class DataImportManager {
         paymentPlan.monthYear = dto.monthYear
         paymentPlan.totalAvailableForPayments = dto.totalAvailableForPayments
         paymentPlan.strategyUsed = dto.strategyUsed
+    }
+    
+    // MARK: - Clean Import
+    
+    private func wipeAllData() async throws {
+        try modelContext.transaction {
+            // Delete all entities in dependency order (children first, then parents)
+            
+            // Delete balance entries first (they reference accounts)
+            let balanceEntriesDescriptor = FetchDescriptor<BalanceEntry>()
+            let balanceEntries = try modelContext.fetch(balanceEntriesDescriptor)
+            for entry in balanceEntries {
+                modelContext.delete(entry)
+            }
+            
+            // Delete planned payments (they reference accounts and payment plans)
+            let plannedPaymentsDescriptor = FetchDescriptor<PlannedPayment>()
+            let plannedPayments = try modelContext.fetch(plannedPaymentsDescriptor)
+            for payment in plannedPayments {
+                modelContext.delete(payment)
+            }
+            
+            // Delete payment plans
+            let paymentPlansDescriptor = FetchDescriptor<PaymentPlan>()
+            let paymentPlans = try modelContext.fetch(paymentPlansDescriptor)
+            for plan in paymentPlans {
+                modelContext.delete(plan)
+            }
+            
+            // Delete subscriptions (independent)
+            let subscriptionsDescriptor = FetchDescriptor<Subscription>()
+            let subscriptions = try modelContext.fetch(subscriptionsDescriptor)
+            for subscription in subscriptions {
+                modelContext.delete(subscription)
+            }
+            
+            // Delete global settings (independent)
+            let globalSettingsDescriptor = FetchDescriptor<GlobalSettings>()
+            let globalSettings = try modelContext.fetch(globalSettingsDescriptor)
+            for settings in globalSettings {
+                modelContext.delete(settings)
+            }
+            
+            // Delete accounts last (they are referenced by balance entries and planned payments)
+            let accountsDescriptor = FetchDescriptor<Account>()
+            let accounts = try modelContext.fetch(accountsDescriptor)
+            for account in accounts {
+                modelContext.delete(account)
+            }
+        }
+        
+        try modelContext.save()
     }
     
     // MARK: - Backup
