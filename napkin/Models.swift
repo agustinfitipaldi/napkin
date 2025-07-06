@@ -58,6 +58,61 @@ enum APRType: String, Codable {
     case variable = "Variable"  // Prime + margin
 }
 
+enum SubscriptionCategory: String, Codable, CaseIterable, Comparable {
+    case entertainment = "Entertainment"
+    case productivity = "Productivity"
+    case essentials = "Essentials"
+    case utilities = "Utilities"
+    case insurance = "Insurance"
+    case fitness = "Fitness & Health"
+    case education = "Education"
+    case news = "News & Media"
+    case gaming = "Gaming"
+    case domains = "Domains"
+    case other = "Other"
+    
+    var systemImage: String {
+        switch self {
+        case .entertainment: return "tv"
+        case .productivity: return "laptopcomputer"
+        case .essentials: return "star.fill"
+        case .utilities: return "house"
+        case .insurance: return "shield"
+        case .fitness: return "heart"
+        case .education: return "book"
+        case .news: return "newspaper"
+        case .gaming: return "gamecontroller"
+        case .domains: return "globe"
+        case .other: return "folder"
+        }
+    }
+    
+    var color: String {
+        switch self {
+        case .entertainment: return "purple"
+        case .productivity: return "blue"
+        case .essentials: return "yellow"
+        case .utilities: return "orange"
+        case .insurance: return "green"
+        case .fitness: return "red"
+        case .education: return "indigo"
+        case .news: return "brown"
+        case .gaming: return "pink"
+        case .domains: return "cyan"
+        case .other: return "secondary"
+        }
+    }
+    
+    static func < (lhs: SubscriptionCategory, rhs: SubscriptionCategory) -> Bool {
+        let order: [SubscriptionCategory] = [.essentials, .entertainment, .productivity, .utilities, .insurance, .fitness, .education, .news, .gaming, .domains, .other]
+        guard let lhsIndex = order.firstIndex(of: lhs),
+              let rhsIndex = order.firstIndex(of: rhs) else {
+            return false
+        }
+        return lhsIndex < rhsIndex
+    }
+}
+
 // MARK: - Models
 
 @Model
@@ -274,6 +329,66 @@ final class PlannedPayment {
     }
 }
 
+@Model
+final class Subscription {
+    var id: UUID
+    var name: String
+    var amount: Decimal  // Amount paid per frequency period
+    var timesPerYear: Int  // How many times this amount is paid per year
+    var category: SubscriptionCategory
+    var notes: String?
+    var isActive: Bool
+    var createdAt: Date
+    var updatedAt: Date
+    
+    init(name: String, amount: Decimal, timesPerYear: Int, category: SubscriptionCategory, notes: String? = nil) {
+        self.id = UUID()
+        self.name = name
+        self.amount = amount
+        self.timesPerYear = max(1, min(365, timesPerYear))  // Clamp between 1 and 365
+        self.category = category
+        self.notes = notes
+        self.isActive = true
+        self.createdAt = Date()
+        self.updatedAt = Date()
+    }
+    
+    // Calculate annual cost
+    var annualCost: Decimal {
+        return amount * Decimal(timesPerYear)
+    }
+    
+    // Calculate monthly cost
+    var monthlyCost: Decimal {
+        return annualCost / 12
+    }
+    
+    // Calculate weekly cost
+    var weeklyCost: Decimal {
+        return annualCost / 52
+    }
+    
+    // Calculate daily cost
+    var dailyCost: Decimal {
+        return annualCost / 365
+    }
+    
+    // Friendly frequency description
+    var frequencyDescription: String {
+        switch timesPerYear {
+        case 1: return "Annually"
+        case 2: return "Semi-annually"
+        case 4: return "Quarterly"
+        case 12: return "Monthly"
+        case 24: return "Bi-monthly"
+        case 26: return "Bi-weekly"
+        case 52: return "Weekly"
+        case 365: return "Daily"
+        default: return "\(timesPerYear) times per year"
+        }
+    }
+}
+
 // MARK: - Helper Extensions
 
 extension DateFormatter {
@@ -335,5 +450,39 @@ extension Array where Element == Account {
             }
         }
         return total
+    }
+}
+
+// MARK: - Subscription Aggregate Calculations
+
+extension Array where Element == Subscription {
+    // Total monthly cost across all active subscriptions
+    func totalMonthlyCost() -> Decimal {
+        return self.filter { $0.isActive }
+            .reduce(0) { $0 + $1.monthlyCost }
+    }
+    
+    // Total annual cost across all active subscriptions
+    func totalAnnualCost() -> Decimal {
+        return self.filter { $0.isActive }
+            .reduce(0) { $0 + $1.annualCost }
+    }
+    
+    // Total monthly cost by category
+    func totalMonthlyCost(for category: SubscriptionCategory) -> Decimal {
+        return self.filter { $0.isActive && $0.category == category }
+            .reduce(0) { $0 + $1.monthlyCost }
+    }
+    
+    // Group subscriptions by category
+    func groupedByCategory() -> [SubscriptionCategory: [Subscription]] {
+        let activeSubscriptions = self.filter { $0.isActive }
+        return Dictionary(grouping: activeSubscriptions) { $0.category }
+    }
+    
+    // Get most expensive subscription
+    func mostExpensive() -> Subscription? {
+        return self.filter { $0.isActive }
+            .max { $0.monthlyCost < $1.monthlyCost }
     }
 }

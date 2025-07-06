@@ -59,23 +59,297 @@ struct ContentView: View {
 }
 
 struct SubscriptionsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query private var subscriptions: [Subscription]
+    
+    @State private var showingAddSubscription = false
+    @State private var selectedSubscription: Subscription?
+    @State private var showingEditSubscription = false
+    @State private var showInactiveSubscriptions = false
+    @State private var selectedCategory: SubscriptionCategory?
+    
+    private var filteredSubscriptions: [Subscription] {
+        subscriptions.filter { subscription in
+            let activeFilter = showInactiveSubscriptions || subscription.isActive
+            let categoryFilter = selectedCategory == nil || subscription.category == selectedCategory
+            return activeFilter && categoryFilter
+        }
+    }
+    
+    private var totalMonthlyCost: Decimal {
+        subscriptions.totalMonthlyCost()
+    }
+    
     var body: some View {
-        VStack {
-            Text("Subscriptions")
-                .font(.largeTitle)
+        NavigationSplitView {
+            subscriptionList
+        } detail: {
+            if let selectedSubscription {
+                SubscriptionDetailView(subscription: selectedSubscription)
+            } else {
+                VStack(spacing: 24) {
+                    Spacer()
+                    
+                    VStack(spacing: 16) {
+                        Image(systemName: "repeat.circle")
+                            .font(.system(size: 48))
+                            .foregroundColor(.accentColor)
+                        
+                        Text("Subscription Tracker")
+                            .font(.largeTitle)
+                            .fontWeight(.semibold)
+                        
+                        Text("Keep track of all your recurring expenses")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                        
+                        if totalMonthlyCost > 0 {
+                            Text("Total: \(formatCurrency(totalMonthlyCost))/month")
+                                .font(.title2)
+                                .fontWeight(.medium)
+                                .foregroundColor(.primary)
+                        }
+                    }
+                    
+                    Button(action: { showingAddSubscription = true }) {
+                        HStack {
+                            Image(systemName: "plus")
+                            Text("Add Subscription")
+                        }
+                        .font(.headline)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .sheet(isPresented: $showingAddSubscription) {
+            SubscriptionFormView(subscription: nil)
+        }
+        .sheet(isPresented: $showingEditSubscription) {
+            if let selectedSubscription {
+                SubscriptionFormView(subscription: selectedSubscription)
+            }
+        }
+    }
+    
+    private var subscriptionList: some View {
+        List(selection: $selectedSubscription) {
+            ForEach(SubscriptionCategory.allCases, id: \.self) { category in
+                let subscriptionsForCategory = filteredSubscriptions.filter { $0.category == category }
+                    .sorted { $0.name < $1.name }
+                
+                if !subscriptionsForCategory.isEmpty {
+                    Section {
+                        ForEach(subscriptionsForCategory) { subscription in
+                            SubscriptionRowView(subscription: subscription)
+                                .tag(subscription)
+                                .onTapGesture {
+                                    if selectedSubscription == subscription {
+                                        selectedSubscription = nil
+                                    } else {
+                                        selectedSubscription = subscription
+                                    }
+                                }
+                                .contextMenu {
+                                    Button("Edit") {
+                                        selectedSubscription = subscription
+                                        showingEditSubscription = true
+                                    }
+                                    
+                                    if subscription.isActive {
+                                        Button("Mark Inactive") {
+                                            toggleSubscriptionActive(subscription)
+                                        }
+                                    } else {
+                                        Button("Mark Active") {
+                                            toggleSubscriptionActive(subscription)
+                                        }
+                                    }
+                                }
+                        }
+                    } header: {
+                        HStack {
+                            Image(systemName: category.systemImage)
+                                .foregroundColor(colorForCategory(category))
+                            Text(category.rawValue)
+                            Spacer()
+                            Text(formatCurrency(subscriptions.totalMonthlyCost(for: category)))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            
+            if filteredSubscriptions.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "repeat.circle")
+                        .font(.system(size: 32))
+                        .foregroundColor(.secondary)
+                    
+                    Text("No subscriptions found")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    
+                    Text("Add your first subscription to get started")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Button("Add Subscription") {
+                        showingAddSubscription = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
                 .padding()
-            
-            Text("Track your subscription costs")
-                .foregroundColor(.secondary)
-            
-            Spacer()
-            
-            Text("Coming soon...")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity)
+            }
         }
         .navigationTitle("Subscriptions")
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationSplitViewColumnWidth(min: 350, ideal: 450)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: { showingAddSubscription = true }) {
+                    Label("Add Subscription", systemImage: "plus")
+                }
+            }
+            
+            ToolbarItem(placement: .secondaryAction) {
+                Button(action: { 
+                    if selectedSubscription != nil {
+                        showingEditSubscription = true 
+                    }
+                }) {
+                    Label("Edit Subscription", systemImage: "pencil")
+                }
+                .disabled(selectedSubscription == nil)
+            }
+            
+            ToolbarItem(placement: .secondaryAction) {
+                Button(action: { 
+                    showInactiveSubscriptions.toggle()
+                }) {
+                    Label(showInactiveSubscriptions ? "Hide Inactive" : "Show Inactive", 
+                          systemImage: showInactiveSubscriptions ? "eye.slash" : "eye")
+                }
+            }
+            
+            ToolbarItem(placement: .secondaryAction) {
+                Menu {
+                    Button("All Categories") {
+                        selectedCategory = nil
+                    }
+                    
+                    ForEach(SubscriptionCategory.allCases, id: \.self) { category in
+                        Button(action: {
+                            selectedCategory = selectedCategory == category ? nil : category
+                        }) {
+                            Label(category.rawValue, systemImage: category.systemImage)
+                        }
+                    }
+                } label: {
+                    Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+                }
+            }
+        }
+    }
+    
+    private func toggleSubscriptionActive(_ subscription: Subscription) {
+        subscription.isActive.toggle()
+        subscription.updatedAt = Date()
+        try? modelContext.save()
+    }
+}
+
+struct SubscriptionDetailView: View {
+    let subscription: Subscription
+    
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Subscription Header
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: subscription.category.systemImage)
+                            .foregroundColor(colorForCategory(subscription.category))
+                            .font(.title2)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text(subscription.name)
+                                    .font(.headline)
+                                if !subscription.isActive {
+                                    Text("INACTIVE")
+                                        .font(.caption2)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.secondary.opacity(0.2))
+                                        .cornerRadius(4)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            Text(subscription.category.rawValue)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                    }
+                    
+                    // Monthly Cost
+                    Text(formatCurrency(subscription.monthlyCost))
+                        .font(.largeTitle)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                    
+                    Text("per month")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(12)
+                
+                // Cost Breakdown
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Cost Breakdown")
+                        .font(.headline)
+                    
+                    DetailRow(label: "Amount per payment", value: formatCurrency(subscription.amount))
+                    DetailRow(label: "Frequency", value: subscription.frequencyDescription)
+                    DetailRow(label: "Weekly cost", value: formatCurrency(subscription.weeklyCost))
+                    DetailRow(label: "Monthly cost", value: formatCurrency(subscription.monthlyCost))
+                    DetailRow(label: "Annual cost", value: formatCurrency(subscription.annualCost))
+                }
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(12)
+                
+                // Notes
+                if let notes = subscription.notes, !notes.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Notes")
+                            .font(.headline)
+                        
+                        Text(notes)
+                            .font(.body)
+                    }
+                    .padding()
+                    .background(Color(NSColor.controlBackgroundColor))
+                    .cornerRadius(12)
+                }
+                
+                Spacer()
+            }
+            .padding()
+        }
+        .navigationTitle(subscription.name)
     }
 }
 
@@ -85,6 +359,7 @@ struct DashboardView: View {
     @Query(sort: [SortDescriptor(\BalanceEntry.entryDate, order: .reverse)]) 
     private var balanceEntries: [BalanceEntry]
     @Query private var globalSettings: [GlobalSettings]
+    @Query private var subscriptions: [Subscription]
     
     @State private var extraPaymentAmount: Decimal = 0
     @State private var selectedStrategy: PaymentStrategy = .avalanche
@@ -177,6 +452,30 @@ struct DashboardView: View {
                     value: String(format: "%.1f%%", NSDecimalNumber(decimal: creditUtilization).doubleValue),
                     color: creditUtilization > 30 ? .red : .green,
                     icon: "percent"
+                )
+            }
+            
+            // Second row - subscriptions and future features
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
+                MetricCard(
+                    title: "Monthly Subscriptions",
+                    value: formatCurrency(totalMonthlySubscriptions),
+                    color: .purple,
+                    icon: "repeat"
+                )
+                
+                MetricCard(
+                    title: "Income Sources",
+                    value: "Coming Soon",
+                    color: .secondary,
+                    icon: "dollarsign.circle"
+                )
+                
+                MetricCard(
+                    title: "Cash Flow",
+                    value: "Coming Soon",
+                    color: .secondary,
+                    icon: "chart.line.uptrend.xyaxis.circle"
                 )
             }
         }
@@ -405,6 +704,10 @@ struct DashboardView: View {
     
     private var debtAccounts: [Account] {
         return activeAccounts.filter { $0.accountType.hasMinimumPayment }
+    }
+    
+    private var totalMonthlySubscriptions: Decimal {
+        return subscriptions.totalMonthlyCost()
     }
     
     private var historicalNetWorthData: [NetWorthDataPoint] {
