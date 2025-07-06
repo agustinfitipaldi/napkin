@@ -32,6 +32,6 @@ struct napkinApp: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
-        .defaultSize(width: 900, height: 650)
+        .defaultSize(width: 1040, height: 650)
     }
 }
