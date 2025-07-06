@@ -34,5 +34,30 @@ struct napkinApp: App {
         }
         .modelContainer(sharedModelContainer)
         .defaultSize(width: 1040, height: 650)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    openSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+        }
+        
+        Window("Settings", id: "settings") {
+            SettingsView()
+                .modelContainer(sharedModelContainer)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+    }
+    
+    private func openSettings() {
+        #if os(macOS)
+        if let window = NSApplication.shared.windows.first(where: { $0.identifier?.rawValue == "settings" }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            // The window will be created automatically when first accessed
+        }
+        #endif
     }
 }
