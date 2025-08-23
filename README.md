@@ -6,7 +6,7 @@ A native macOS personal finance calculator that helps you manage credit card pay
 ![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)
 ![SwiftUI](https://img.shields.io/badge/SwiftUI-5.0+-green.svg)
 
-Here's a me flipping around the different views using demo data:
+Here's me flipping around the different views using demo data:
 
 https://github.com/user-attachments/assets/ff2ffbcc-7730-4b0c-8ace-8967ed6610e4
 
