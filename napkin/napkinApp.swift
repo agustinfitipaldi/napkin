@@ -18,6 +18,7 @@ struct napkinApp: App {
             PaymentPlan.self,
             PlannedPayment.self,
             Subscription.self,
+            PaycheckConfig.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

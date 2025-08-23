@@ -10,6 +10,9 @@ ROADMAP.md
 uploads/
 usage_tracking*.json
 
+# Development notes and scratch files
+notes/
+
 # Xcode
 .DS_Store
 build/

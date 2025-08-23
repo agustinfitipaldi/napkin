@@ -360,13 +360,77 @@ struct DashboardView: View {
     private var balanceEntries: [BalanceEntry]
     @Query private var globalSettings: [GlobalSettings]
     @Query private var subscriptions: [Subscription]
+    @Query private var paycheckConfigs: [PaycheckConfig]
     
-    @State private var extraPaymentAmount: Decimal = 0
+    @State private var safetyAmount: Decimal = 500
     @State private var selectedStrategy: PaymentStrategy = .avalanche
+    @State private var nextPaycheckDate: Date = Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date()
+    @State private var secondPaycheckDate: Date = Calendar.current.date(byAdding: .day, value: 29, to: Date()) ?? Date()
+    @State private var nextPaycheckAmount: Decimal = 2000
     
     private var currentPrimeRate: Decimal {
         globalSettings.first?.currentPrimeRate ?? 8.5
     }
+    
+    private var totalCheckingBalance: Decimal {
+        let checkingAccounts = activeAccounts.filter { $0.accountType == .checking }
+        var total: Decimal = 0
+        
+        for account in checkingAccounts {
+            if let balanceEntry = currentBalanceEntries.first(where: { $0.account?.id == account.id }) {
+                total += balanceEntry.effectiveBalance()
+            }
+        }
+        
+        return total
+    }
+    
+    private var availableForPayments: Decimal {
+        let totalAvailable = totalCheckingBalance - safetyAmount
+        return max(0, totalAvailable)
+    }
+    
+    // Period 1: Now → Next Paycheck Date
+    private var period1Accounts: [Account] {
+        let today = Date()
+        return debtAccounts.filter { account in
+            account.isDueBetween(startDate: today, endDate: nextPaycheckDate)
+        }
+    }
+    
+    // Period 2: Next Paycheck Date → Second Paycheck Date  
+    private var period2Accounts: [Account] {
+        return debtAccounts.filter { account in
+            account.isDueBetween(startDate: nextPaycheckDate, endDate: secondPaycheckDate)
+        }
+    }
+    
+    private var period2TotalMinimums: Decimal {
+        var total: Decimal = 0
+        for account in period2Accounts {
+            if let balanceEntry = currentBalanceEntries.first(where: { $0.account?.id == account.id }) {
+                let minimumPayment = account.minimumPayment(
+                    balance: balanceEntry.effectiveBalance(),
+                    primeRate: currentPrimeRate
+                )
+                total += minimumPayment
+            }
+        }
+        return total
+    }
+    
+    // Shortfall protection: if next paycheck can't cover period 2, bring forward the difference
+    private var period2Shortfall: Decimal {
+        let shortfall = period2TotalMinimums - nextPaycheckAmount
+        return max(0, shortfall)
+    }
+    
+    // Check if paycheck period is too long (>45 days)
+    private var isLongPaycheckPeriod: Bool {
+        let daysBetween = Calendar.current.dateComponents([.day], from: Date(), to: secondPaycheckDate).day ?? 0
+        return daysBetween > 45
+    }
+    
     
     private var activeAccounts: [Account] {
         accounts.filter { $0.isActive }
@@ -498,16 +562,57 @@ struct DashboardView: View {
                     
                     Spacer()
                     
-                    HStack {
-                        Text("Extra Payment:")
-                        TextField("$0", value: $extraPaymentAmount, format: .currency(code: "USD"))
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 100)
+                    VStack(alignment: .leading) {
+                        HStack {
+                            Text("Next Paycheck:")
+                            DatePicker("", selection: $nextPaycheckDate, displayedComponents: .date)
+                                .labelsHidden()
+                                .frame(width: 120)
+                        }
+                        HStack {
+                            Text("Second Paycheck:")
+                            DatePicker("", selection: $secondPaycheckDate, displayedComponents: .date)
+                                .labelsHidden()
+                                .frame(width: 120)
+                        }
+                        HStack {
+                            Text("Paycheck Amount:")
+                            TextField("$0", value: $nextPaycheckAmount, format: .currency(code: "USD"))
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 100)
+                        }
+                        HStack {
+                            Text("Safety Buffer:")
+                            TextField("$0", value: $safetyAmount, format: .currency(code: "USD"))
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 100)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Checking: \(formatCurrency(totalCheckingBalance)) - Safety: \(formatCurrency(safetyAmount))")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("Available for payments: \(formatCurrency(availableForPayments))")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(availableForPayments > 0 ? .primary : .red)
+                            
+                            if period2Shortfall > 0 {
+                                Text("⚠️ Next paycheck shortfall: \(formatCurrency(period2Shortfall))")
+                                    .font(.caption)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            if isLongPaycheckPeriod {
+                                Text("⚠️ Long paycheck period - calculations may be unstable")
+                                    .font(.caption)
+                                    .foregroundColor(.red)
+                            }
+                        }
                     }
                 }
                 
                 // Payment plan display
-                if !debtAccounts.isEmpty && extraPaymentAmount > 0 {
+                if !debtAccounts.isEmpty && availableForPayments > 0 {
                     paymentPlanView
                 } else if debtAccounts.isEmpty {
                     Text("No debt accounts found - you're debt free! 🎉")
@@ -535,12 +640,24 @@ struct DashboardView: View {
             
             ForEach(generatePaymentPlan(), id: \.accountId) { payment in
                 HStack {
+                    Image(systemName: payment.category.systemImage)
+                        .foregroundColor(payment.category.color)
+                        .frame(width: 16)
+                    
                     VStack(alignment: .leading, spacing: 2) {
                         Text(payment.accountName)
                             .fontWeight(.medium)
-                        Text(payment.bankName)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        HStack {
+                            Text(payment.bankName)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("•")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(payment.category.rawValue)
+                                .font(.caption)
+                                .foregroundColor(payment.category.color)
+                        }
                     }
                     
                     Spacer()
@@ -567,7 +684,7 @@ struct DashboardView: View {
                 Text("Total Payment")
                     .fontWeight(.semibold)
                 Spacer()
-                Text(formatCurrency(totalMinimumPayments + extraPaymentAmount))
+                Text(formatCurrency(totalMinimumPayments + availableForPayments))
                     .fontWeight(.bold)
             }
         }
@@ -769,10 +886,12 @@ struct DashboardView: View {
     
     private func generatePaymentPlan() -> [PaymentPlanItem] {
         var plans: [PaymentPlanItem] = []
-        var remainingExtra = extraPaymentAmount
+        var remainingCash = availableForPayments
         
-        // First, add minimum payments for all debt accounts
-        for account in debtAccounts {
+        // TIER 1: Period 1 minimums + shortfall from Period 2
+        
+        // Add Period 1 minimum payments (urgent accounts due before next paycheck)
+        for account in period1Accounts {
             if let balanceEntry = currentBalanceEntries.first(where: { $0.account?.id == account.id }) {
                 let minimumPayment = account.minimumPayment(
                     balance: balanceEntry.effectiveBalance(),
@@ -786,31 +905,97 @@ struct DashboardView: View {
                     balance: balanceEntry.effectiveBalance(),
                     apr: account.currentAPR(primeRate: currentPrimeRate) ?? 0,
                     minimumAmount: minimumPayment,
-                    suggestedAmount: minimumPayment
+                    suggestedAmount: minimumPayment,
+                    category: .urgent
+                ))
+                
+                remainingCash = max(0, remainingCash - minimumPayment)
+            }
+        }
+        
+        // Add shortfall protection: allocate additional funds to cover Period 2 shortfall
+        if period2Shortfall > 0 && remainingCash > 0 {
+            let shortfallToCover = min(period2Shortfall, remainingCash)
+            
+            // Find the highest priority Period 2 account to receive shortfall payment
+            let period2AccountsSorted: [Account]
+            switch selectedStrategy {
+            case .avalanche:
+                period2AccountsSorted = period2Accounts.sorted { account1, account2 in
+                    let apr1 = account1.currentAPR(primeRate: currentPrimeRate) ?? 0
+                    let apr2 = account2.currentAPR(primeRate: currentPrimeRate) ?? 0
+                    return apr1 > apr2
+                }
+            case .snowball:
+                period2AccountsSorted = period2Accounts.sorted { account1, account2 in
+                    let balance1 = currentBalanceEntries.first(where: { $0.account?.id == account1.id })?.effectiveBalance() ?? 0
+                    let balance2 = currentBalanceEntries.first(where: { $0.account?.id == account2.id })?.effectiveBalance() ?? 0
+                    return balance1 < balance2
+                }
+            }
+            
+            if let topPriorityAccount = period2AccountsSorted.first,
+               let balanceEntry = currentBalanceEntries.first(where: { $0.account?.id == topPriorityAccount.id }) {
+                
+                plans.append(PaymentPlanItem(
+                    accountId: topPriorityAccount.id,
+                    accountName: topPriorityAccount.accountName + " (Shortfall)",
+                    bankName: topPriorityAccount.bankName,
+                    balance: balanceEntry.effectiveBalance(),
+                    apr: topPriorityAccount.currentAPR(primeRate: currentPrimeRate) ?? 0,
+                    minimumAmount: 0,
+                    suggestedAmount: shortfallToCover,
+                    category: .urgent
+                ))
+                
+                remainingCash -= shortfallToCover
+            }
+        }
+        
+        // TIER 2: Strategic debt reduction with remaining funds
+        // Get all accounts not in Period 1 or Period 2 (or have extra capacity)
+        let allPeriodAccountIds = Set(period1Accounts.map { $0.id } + period2Accounts.map { $0.id })
+        let strategicAccounts = debtAccounts.filter { !allPeriodAccountIds.contains($0.id) }
+        
+        var strategicPlans: [PaymentPlanItem] = []
+        for account in strategicAccounts {
+            if let balanceEntry = currentBalanceEntries.first(where: { $0.account?.id == account.id }) {
+                strategicPlans.append(PaymentPlanItem(
+                    accountId: account.id,
+                    accountName: account.accountName,
+                    bankName: account.bankName,
+                    balance: balanceEntry.effectiveBalance(),
+                    apr: account.currentAPR(primeRate: currentPrimeRate) ?? 0,
+                    minimumAmount: 0,
+                    suggestedAmount: 0,
+                    category: .strategic
                 ))
             }
         }
         
-        // Sort by strategy
+        // Sort strategic accounts by priority
         switch selectedStrategy {
         case .avalanche:
-            plans.sort { $0.apr > $1.apr }
+            strategicPlans.sort { $0.apr > $1.apr }
         case .snowball:
-            plans.sort { $0.balance < $1.balance }
+            strategicPlans.sort { $0.balance < $1.balance }
         }
         
-        // Distribute extra payment
-        var index = 0
-        while remainingExtra > 0 && index < plans.count {
-            let extraForThisAccount = min(remainingExtra, plans[index].balance - plans[index].suggestedAmount)
-            if extraForThisAccount > 0 {
-                plans[index].suggestedAmount += extraForThisAccount
-                remainingExtra -= extraForThisAccount
+        // Allocate remaining cash to strategic accounts
+        var strategicIndex = 0
+        while remainingCash > 0 && strategicIndex < strategicPlans.count {
+            let maxPayment = min(remainingCash, strategicPlans[strategicIndex].balance)
+            if maxPayment > 0 {
+                strategicPlans[strategicIndex].suggestedAmount = maxPayment
+                remainingCash -= maxPayment
             }
-            index += 1
+            strategicIndex += 1
         }
         
-        return plans
+        // Combine all plans and filter out $0 payments
+        plans.append(contentsOf: strategicPlans)
+        
+        return plans.filter { $0.suggestedAmount > 0 }
     }
 }
 
@@ -821,6 +1006,25 @@ enum PaymentStrategy: String, CaseIterable {
     case snowball = "snowball"
 }
 
+enum PaymentCategory: String, CaseIterable {
+    case urgent = "Urgent"
+    case strategic = "Strategic"
+    
+    var color: Color {
+        switch self {
+        case .urgent: return .red
+        case .strategic: return .blue
+        }
+    }
+    
+    var systemImage: String {
+        switch self {
+        case .urgent: return "exclamationmark.triangle.fill"
+        case .strategic: return "target"
+        }
+    }
+}
+
 struct PaymentPlanItem {
     let accountId: UUID
     let accountName: String
@@ -829,6 +1033,7 @@ struct PaymentPlanItem {
     let apr: Decimal
     let minimumAmount: Decimal
     var suggestedAmount: Decimal
+    var category: PaymentCategory = .urgent
 }
 
 struct NetWorthDataPoint: Identifiable {

@@ -220,6 +220,29 @@ final class Account {
         
         return limit - balance
     }
+    
+    // Calculate next due date from a given date
+    func nextDueDate(from date: Date = Date()) -> Date? {
+        guard let paymentDueDay = paymentDueDay else { return nil }
+        
+        let calendar = Calendar.current
+        let currentDay = calendar.component(.day, from: date)
+        
+        // If we haven't passed this month's due date, return it
+        if currentDay <= paymentDueDay {
+            return calendar.date(bySetting: .day, value: paymentDueDay, of: date) ?? date
+        } else {
+            // Otherwise, return next month's due date
+            let nextMonth = calendar.date(byAdding: .month, value: 1, to: date) ?? date
+            return calendar.date(bySetting: .day, value: paymentDueDay, of: nextMonth) ?? date
+        }
+    }
+    
+    // Check if payment is due between two dates
+    func isDueBetween(startDate: Date, endDate: Date) -> Bool {
+        guard let dueDate = nextDueDate(from: startDate) else { return false }
+        return dueDate >= startDate && dueDate <= endDate
+    }
 }
 
 @Model
@@ -484,5 +507,80 @@ extension Array where Element == Subscription {
     func mostExpensive() -> Subscription? {
         return self.filter { $0.isActive }
             .max { $0.monthlyCost < $1.monthlyCost }
+    }
+}
+
+// MARK: - Paycheck Configuration
+
+@Model
+final class PaycheckConfig {
+    var id: UUID
+    var expectedAmount: Decimal
+    var nextPaycheckDate: Date
+    var frequency: PaycheckFrequency
+    var isActive: Bool
+    var notes: String?
+    var createdAt: Date
+    var updatedAt: Date
+    
+    init(expectedAmount: Decimal, nextPaycheckDate: Date, frequency: PaycheckFrequency, notes: String? = nil) {
+        self.id = UUID()
+        self.expectedAmount = expectedAmount
+        self.nextPaycheckDate = nextPaycheckDate
+        self.frequency = frequency
+        self.isActive = true
+        self.notes = notes
+        self.createdAt = Date()
+        self.updatedAt = Date()
+    }
+    
+    // Calculate the paycheck date after the given date
+    func nextPaycheckAfter(_ date: Date) -> Date {
+        let calendar = Calendar.current
+        let currentNext = nextPaycheckDate
+        
+        // If the configured next paycheck is after the given date, return it
+        if currentNext > date {
+            return currentNext
+        }
+        
+        // Otherwise calculate based on frequency
+        switch frequency {
+        case .weekly:
+            let weeksDiff = calendar.dateComponents([.weekOfYear], from: currentNext, to: date).weekOfYear ?? 0
+            let additionalWeeks = weeksDiff + 1
+            return calendar.date(byAdding: .weekOfYear, value: additionalWeeks, to: currentNext) ?? currentNext
+            
+        case .biweekly:
+            let weeksDiff = calendar.dateComponents([.weekOfYear], from: currentNext, to: date).weekOfYear ?? 0
+            let additionalBiweeks = ((weeksDiff / 2) + 1) * 2
+            return calendar.date(byAdding: .weekOfYear, value: additionalBiweeks, to: currentNext) ?? currentNext
+            
+        case .monthly:
+            let monthsDiff = calendar.dateComponents([.month], from: currentNext, to: date).month ?? 0
+            let additionalMonths = monthsDiff + 1
+            return calendar.date(byAdding: .month, value: additionalMonths, to: currentNext) ?? currentNext
+        }
+    }
+    
+    // Calculate expected amount for shortfall protection (could be different from expectedAmount)
+    func expectedAmountForDate(_ date: Date) -> Decimal {
+        // For now, return the configured amount
+        // In the future, this could factor in overtime, reduced hours, etc.
+        return expectedAmount
+    }
+}
+
+enum PaycheckFrequency: String, CaseIterable, Codable {
+    case weekly = "Weekly"
+    case biweekly = "Bi-weekly" 
+    case monthly = "Monthly"
+    
+    var systemImage: String {
+        switch self {
+        case .weekly: return "calendar.badge.clock"
+        case .biweekly: return "calendar.badge.clock"
+        case .monthly: return "calendar"
+        }
     }
 }
