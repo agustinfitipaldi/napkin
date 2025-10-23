@@ -41,8 +41,123 @@ struct SidebarView: View {
 
 struct ContentView: View {
     @State private var selectedSection: SidebarSection = .accounts
-    
+    @State private var showingSettings = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     var body: some View {
+        #if os(iOS)
+        // Use TabView on iPhone, NavigationSplitView on iPad
+        if horizontalSizeClass == .compact {
+            iPhoneLayout
+        } else {
+            iPadLayout
+        }
+        #else
+        // macOS always uses NavigationSplitView
+        macOSLayout
+        #endif
+    }
+
+    // MARK: - iPhone Layout (TabView)
+    private var iPhoneLayout: some View {
+        TabView(selection: $selectedSection) {
+            NavigationStack {
+                AccountListView()
+                    .navigationTitle("Accounts")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showingSettings = true
+                            } label: {
+                                Label("Settings", systemImage: "gear")
+                            }
+                        }
+                    }
+            }
+            .tabItem {
+                Label("Accounts", systemImage: "creditcard")
+            }
+            .tag(SidebarSection.accounts)
+
+            NavigationStack {
+                SubscriptionsView()
+                    .navigationTitle("Subscriptions")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showingSettings = true
+                            } label: {
+                                Label("Settings", systemImage: "gear")
+                            }
+                        }
+                    }
+            }
+            .tabItem {
+                Label("Subscriptions", systemImage: "repeat")
+            }
+            .tag(SidebarSection.subscriptions)
+
+            NavigationStack {
+                DashboardView()
+                    .navigationTitle("Dashboard")
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                showingSettings = true
+                            } label: {
+                                Label("Settings", systemImage: "gear")
+                            }
+                        }
+                    }
+            }
+            .tabItem {
+                Label("Dashboard", systemImage: "chart.bar")
+            }
+            .tag(SidebarSection.dashboard)
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsView()
+                    .navigationTitle("Settings")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+    }
+
+    // MARK: - iPad Layout (NavigationSplitView)
+    private var iPadLayout: some View {
+        NavigationSplitView {
+            SidebarView(selectedSection: $selectedSection)
+        } detail: {
+            switch selectedSection {
+            case .accounts:
+                AccountListView()
+            case .subscriptions:
+                SubscriptionsView()
+            case .dashboard:
+                DashboardView()
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    showingSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsView()
+                    .navigationTitle("Settings")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+        }
+    }
+
+    // MARK: - macOS Layout (NavigationSplitView)
+    private var macOSLayout: some View {
         NavigationSplitView {
             SidebarView(selectedSection: $selectedSection)
         } detail: {
@@ -313,9 +428,9 @@ struct SubscriptionDetailView: View {
                         .foregroundColor(.secondary)
                 }
                 .padding()
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(.thinMaterial)
                 .cornerRadius(12)
-                
+
                 // Cost Breakdown
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Cost Breakdown")
@@ -328,9 +443,9 @@ struct SubscriptionDetailView: View {
                     DetailRow(label: "Annual cost", value: formatCurrency(subscription.annualCost))
                 }
                 .padding()
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(.thinMaterial)
                 .cornerRadius(12)
-                
+
                 // Notes
                 if let notes = subscription.notes, !notes.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -341,10 +456,10 @@ struct SubscriptionDetailView: View {
                             .font(.body)
                     }
                     .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
+                    .background(.thinMaterial)
                     .cornerRadius(12)
                 }
-                
+
                 Spacer()
             }
             .padding()
@@ -627,11 +742,11 @@ struct DashboardView: View {
                 }
             }
             .padding()
-            .background(Color(NSColor.controlBackgroundColor))
+            .background(.thinMaterial)
             .cornerRadius(12)
         }
     }
-    
+
     private var paymentPlanView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("This Month's Payment Plan")
@@ -689,10 +804,10 @@ struct DashboardView: View {
             }
         }
         .padding()
-        .background(Color(NSColor.textBackgroundColor))
+        .background(.ultraThinMaterial)
         .cornerRadius(8)
     }
-    
+
     private var historicalChartSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Net Worth Trend")
@@ -749,7 +864,7 @@ struct DashboardView: View {
                     }
                 }
                 .padding()
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(.thinMaterial)
                 .cornerRadius(12)
             } else {
                 VStack(spacing: 12) {
@@ -767,7 +882,7 @@ struct DashboardView: View {
                         .multilineTextAlignment(.center)
                 }
                 .padding(40)
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(.thinMaterial)
                 .cornerRadius(12)
             }
         }
@@ -1075,7 +1190,7 @@ struct MetricCard: View {
                 .foregroundColor(color)
         }
         .padding()
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(.thinMaterial)
         .cornerRadius(8)
     }
 }

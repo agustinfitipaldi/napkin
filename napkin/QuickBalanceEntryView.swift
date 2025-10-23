@@ -66,8 +66,8 @@ struct QuickBalanceEntryView: View {
                 .help("Save all entered balances (⌘↩)")
             }
             .padding()
-            .background(Color(NSColor.windowBackgroundColor))
-            
+            .background(.regularMaterial)
+
             Divider()
             
             // Content
@@ -90,8 +90,8 @@ struct QuickBalanceEntryView: View {
                     .help("Copy balances from last month as starting values")
                 }
                 .padding()
-                .background(Color(NSColor.controlBackgroundColor))
-                
+                .background(.thinMaterial)
+
                 Divider()
                 
                 // Balance entry form
@@ -136,7 +136,9 @@ struct QuickBalanceEntryView: View {
                 }
             }
         }
+        #if os(macOS)
         .frame(minWidth: 500, minHeight: 400)
+        #endif
         .alert("Error", isPresented: $showingError) {
             Button("OK") { }
         } message: {

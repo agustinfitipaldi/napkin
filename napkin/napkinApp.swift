@@ -20,7 +20,13 @@ struct napkinApp: App {
             Subscription.self,
             PaycheckConfig.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        // Configure CloudKit sync with iCloud
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false,
+            cloudKitDatabase: .automatic // Enable iCloud sync
+        )
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
@@ -34,6 +40,7 @@ struct napkinApp: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
+        #if os(macOS)
         .defaultSize(width: 1040, height: 650)
         .commands {
             CommandGroup(replacing: .appSettings) {
@@ -43,13 +50,16 @@ struct napkinApp: App {
                 .keyboardShortcut(",", modifiers: .command)
             }
         }
-        
+        #endif
+
+        #if os(macOS)
         Window("Settings", id: "settings") {
             SettingsView()
                 .modelContainer(sharedModelContainer)
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
+        #endif
     }
     
     private func openSettings() {

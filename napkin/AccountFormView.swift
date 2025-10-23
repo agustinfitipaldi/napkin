@@ -77,8 +77,8 @@ struct AccountFormView: View {
                 .buttonStyle(.borderedProminent)
             }
             .padding()
-            .background(Color(NSColor.windowBackgroundColor))
-            
+            .background(.regularMaterial)
+
             Divider()
             
             // Form content
@@ -266,7 +266,9 @@ struct AccountFormView: View {
                 .padding()
             }
         }
+        #if os(macOS)
         .frame(minWidth: 400, maxWidth: 500, minHeight: 500)
+        #endif
         .alert("Error", isPresented: $showingError) {
             Button("OK") { }
         } message: {

@@ -282,9 +282,9 @@ struct AccountDetailView: View {
                     }
                 }
                 .padding()
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(.thinMaterial)
                 .cornerRadius(12)
-                
+
                 // Account Details
                 if account.accountType.hasAPR || account.accountType.hasMinimumPayment {
                     VStack(alignment: .leading, spacing: 12) {
@@ -312,10 +312,10 @@ struct AccountDetailView: View {
                         }
                     }
                     .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
+                    .background(.thinMaterial)
                     .cornerRadius(12)
                 }
-                
+
                 // Recent Balance History
                 if !balanceEntries.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -347,10 +347,10 @@ struct AccountDetailView: View {
                         }
                     }
                     .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
+                    .background(.thinMaterial)
                     .cornerRadius(12)
                 }
-                
+
                 Spacer()
             }
             .padding()
