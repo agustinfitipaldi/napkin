@@ -120,7 +120,7 @@ final class Account {
     var id: UUID = UUID()
     var bankName: String = ""
     var accountName: String = ""
-    var accountType: AccountType = .checking
+    var accountType: AccountType = AccountType.checking
     var lastFourDigits: String?  // For easy identification
 
     // Credit Details
@@ -362,7 +362,7 @@ final class Subscription {
     var name: String = ""
     var amount: Decimal = 0  // Amount paid per frequency period
     var timesPerYear: Int = 12  // How many times this amount is paid per year
-    var category: SubscriptionCategory = .other
+    var category: SubscriptionCategory = SubscriptionCategory.other
     var notes: String?
     var isActive: Bool = true
     var createdAt: Date = Date()
@@ -521,7 +521,7 @@ final class PaycheckConfig {
     var id: UUID = UUID()
     var expectedAmount: Decimal = 0
     var nextPaycheckDate: Date = Date()
-    var frequency: PaycheckFrequency = .biweekly
+    var frequency: PaycheckFrequency = PaycheckFrequency.biweekly
     var isActive: Bool = true
     var notes: String?
     var createdAt: Date = Date()
