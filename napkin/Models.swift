@@ -117,35 +117,36 @@ enum SubscriptionCategory: String, Codable, CaseIterable, Comparable {
 
 @Model
 final class Account {
-    var id: UUID
-    var bankName: String
-    var accountName: String
-    var accountType: AccountType
+    var id: UUID = UUID()
+    var bankName: String = ""
+    var accountName: String = ""
+    var accountType: AccountType = .checking
     var lastFourDigits: String?  // For easy identification
-    
+
     // Credit Details
     var creditLimit: Decimal?  // For credit cards
-    
+
     // APR Details (only for credit accounts)
     var aprType: APRType?
     var fixedAPR: Decimal?  // For fixed rate
     var marginAPR: Decimal?  // For variable (added to prime)
     var maxAPR: Decimal?  // Cap for variable rates
-    
+
     // Payment Details
     var paymentDueDay: Int?  // Day of month (1-31)
     var minimumPaymentAmount: Decimal?  // Fixed minimum
     var minimumPaymentPercent: Decimal?  // Or percentage of balance
     var lateFee: Decimal?
-    
+
     // Metadata
-    var createdAt: Date
-    var updatedAt: Date
-    var isActive: Bool  // For soft delete/archive
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
+    var isActive: Bool = true  // For soft delete/archive
     var notes: String?
-    
+
     // Relationships
     @Relationship(deleteRule: .cascade) var balanceEntries: [BalanceEntry]?
+    @Relationship(inverse: \PlannedPayment.account) var plannedPayments: [PlannedPayment]?
     
     init(bankName: String, accountName: String, accountType: AccountType) {
         self.id = UUID()
@@ -247,14 +248,14 @@ final class Account {
 
 @Model
 final class BalanceEntry {
-    var id: UUID
-    var amount: Decimal  // Store as positive for all accounts
-    var entryDate: Date  // When this balance was recorded
-    var asOfDate: Date  // What date this balance represents
-    
+    var id: UUID = UUID()
+    var amount: Decimal = 0  // Store as positive for all accounts
+    var entryDate: Date = Date()  // When this balance was recorded
+    var asOfDate: Date = Date()  // What date this balance represents
+
     // For credit cards: store available credit instead of balance for accuracy
     var availableCredit: Decimal?  // Only for credit card accounts
-    
+
     // Relationship
     var account: Account?
     
@@ -302,9 +303,9 @@ final class BalanceEntry {
 
 @Model
 final class GlobalSettings {
-    var id: UUID
-    var currentPrimeRate: Decimal
-    var lastUpdated: Date
+    var id: UUID = UUID()
+    var currentPrimeRate: Decimal = 8.5
+    var lastUpdated: Date = Date()
     
     init(primeRate: Decimal = 8.5) {  // Current prime rate as of 2024
         self.id = UUID()
@@ -315,14 +316,14 @@ final class GlobalSettings {
 
 @Model
 final class PaymentPlan {
-    var id: UUID
-    var generatedDate: Date
-    var monthYear: String  // "January 2024"
-    var totalAvailableForPayments: Decimal
-    var strategyUsed: String  // "avalanche", "snowball", "custom"
-    
+    var id: UUID = UUID()
+    var generatedDate: Date = Date()
+    var monthYear: String = ""  // "January 2024"
+    var totalAvailableForPayments: Decimal = 0
+    var strategyUsed: String = "manual"  // "avalanche", "snowball", "custom"
+
     // Store the payment instructions
-    @Relationship(deleteRule: .cascade) var payments: [PlannedPayment]?
+    @Relationship(deleteRule: .cascade, inverse: \PlannedPayment.paymentPlan) var payments: [PlannedPayment]?
     
     init() {
         self.id = UUID()
@@ -335,12 +336,15 @@ final class PaymentPlan {
 
 @Model
 final class PlannedPayment {
-    var id: UUID
+    var id: UUID = UUID()
+    var suggestedAmount: Decimal = 0
+    var minimumAmount: Decimal = 0
+    var interest: Decimal = 0  // Store calculated interest for reference
+    var isCompleted: Bool = false
+
+    // Relationships
     var account: Account?
-    var suggestedAmount: Decimal
-    var minimumAmount: Decimal
-    var interest: Decimal  // Store calculated interest for reference
-    var isCompleted: Bool
+    var paymentPlan: PaymentPlan?
     
     init(account: Account, suggestedAmount: Decimal, minimumAmount: Decimal, interest: Decimal) {
         self.id = UUID()
@@ -354,15 +358,15 @@ final class PlannedPayment {
 
 @Model
 final class Subscription {
-    var id: UUID
-    var name: String
-    var amount: Decimal  // Amount paid per frequency period
-    var timesPerYear: Int  // How many times this amount is paid per year
-    var category: SubscriptionCategory
+    var id: UUID = UUID()
+    var name: String = ""
+    var amount: Decimal = 0  // Amount paid per frequency period
+    var timesPerYear: Int = 12  // How many times this amount is paid per year
+    var category: SubscriptionCategory = .other
     var notes: String?
-    var isActive: Bool
-    var createdAt: Date
-    var updatedAt: Date
+    var isActive: Bool = true
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
     
     init(name: String, amount: Decimal, timesPerYear: Int, category: SubscriptionCategory, notes: String? = nil) {
         self.id = UUID()
@@ -514,14 +518,14 @@ extension Array where Element == Subscription {
 
 @Model
 final class PaycheckConfig {
-    var id: UUID
-    var expectedAmount: Decimal
-    var nextPaycheckDate: Date
-    var frequency: PaycheckFrequency
-    var isActive: Bool
+    var id: UUID = UUID()
+    var expectedAmount: Decimal = 0
+    var nextPaycheckDate: Date = Date()
+    var frequency: PaycheckFrequency = .biweekly
+    var isActive: Bool = true
     var notes: String?
-    var createdAt: Date
-    var updatedAt: Date
+    var createdAt: Date = Date()
+    var updatedAt: Date = Date()
     
     init(expectedAmount: Decimal, nextPaycheckDate: Date, frequency: PaycheckFrequency, notes: String? = nil) {
         self.id = UUID()
