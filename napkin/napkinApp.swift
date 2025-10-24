@@ -21,17 +21,27 @@ struct napkinApp: App {
             PaycheckConfig.self,
         ])
 
-        // Configure CloudKit sync with iCloud
-        let modelConfiguration = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: false,
-            cloudKitDatabase: .automatic // Enable iCloud sync
-        )
-
+        // Try CloudKit sync first, fall back to local-only if it fails
+        // CloudKit requires: iCloud account signed in + proper entitlements configured
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            let cloudConfig = ModelConfiguration(
+                schema: schema,
+                isStoredInMemoryOnly: false,
+                cloudKitDatabase: .automatic
+            )
+            return try ModelContainer(for: schema, configurations: [cloudConfig])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // CloudKit not available - fall back to local storage
+            print("⚠️ CloudKit unavailable, using local storage only: \(error)")
+            do {
+                let localConfig = ModelConfiguration(
+                    schema: schema,
+                    isStoredInMemoryOnly: false
+                )
+                return try ModelContainer(for: schema, configurations: [localConfig])
+            } catch {
+                fatalError("Could not create ModelContainer even with local storage: \(error)")
+            }
         }
     }()
 
