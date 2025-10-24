@@ -643,13 +643,14 @@ struct SubscriptionDetailView: View {
 
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query private var accounts: [Account]
-    @Query(sort: [SortDescriptor(\BalanceEntry.entryDate, order: .reverse)]) 
+    @Query(sort: [SortDescriptor(\BalanceEntry.entryDate, order: .reverse)])
     private var balanceEntries: [BalanceEntry]
     @Query private var globalSettings: [GlobalSettings]
     @Query private var subscriptions: [Subscription]
     @Query private var paycheckConfigs: [PaycheckConfig]
-    
+
     @State private var safetyAmount: Decimal = 500
     @State private var selectedStrategy: PaymentStrategy = .avalanche
     @State private var nextPaycheckDate: Date = Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date()
@@ -762,7 +763,81 @@ struct DashboardView: View {
             Text("Financial Overview")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
+
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                compactKeyMetrics
+            } else {
+                regularKeyMetrics
+            }
+            #else
+            regularKeyMetrics
+            #endif
+        }
+    }
+
+    // iPhone: 2-column layout with custom ordering
+    private var compactKeyMetrics: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
+            // Row 1: Total Debt (spanning 2 columns - achieved by making it first)
+            MetricCard(
+                title: "Total Debt",
+                value: formatCurrency(totalDebt),
+                color: .red,
+                icon: "creditcard"
+            )
+            .gridCellColumns(2)
+
+            // Row 2: Total Assets | Net Worth
+            MetricCard(
+                title: "Total Assets",
+                value: formatCurrency(totalAssets),
+                color: .green,
+                icon: "banknote"
+            )
+
+            MetricCard(
+                title: "Net Worth",
+                value: formatCurrency(netWorth),
+                color: netWorth >= 0 ? .green : .red,
+                icon: "chart.line.uptrend.xyaxis"
+            )
+
+            // Row 3: Available Credit | Monthly Minimums
+            MetricCard(
+                title: "Available Credit",
+                value: formatCurrency(totalAvailableCredit),
+                color: .blue,
+                icon: "creditcard.circle"
+            )
+
+            MetricCard(
+                title: "Monthly Minimums",
+                value: formatCurrency(totalMinimumPayments),
+                color: .orange,
+                icon: "calendar"
+            )
+
+            // Row 4: Monthly Subscriptions | Credit Utilization
+            MetricCard(
+                title: "Monthly Subscriptions",
+                value: formatCurrency(totalMonthlySubscriptions),
+                color: .purple,
+                icon: "repeat"
+            )
+
+            MetricCard(
+                title: "Credit Utilization",
+                value: String(format: "%.1f%%", NSDecimalNumber(decimal: creditUtilization).doubleValue),
+                color: creditUtilization > 30 ? .red : .green,
+                icon: "percent"
+            )
+        }
+    }
+
+    // iPad/macOS: Original 3x3 grid
+    private var regularKeyMetrics: some View {
+        VStack(spacing: 16) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
                 MetricCard(
                     title: "Total Debt",
@@ -770,35 +845,35 @@ struct DashboardView: View {
                     color: .red,
                     icon: "creditcard"
                 )
-                
+
                 MetricCard(
                     title: "Total Assets",
                     value: formatCurrency(totalAssets),
                     color: .green,
                     icon: "banknote"
                 )
-                
+
                 MetricCard(
                     title: "Net Worth",
                     value: formatCurrency(netWorth),
                     color: netWorth >= 0 ? .green : .red,
                     icon: "chart.line.uptrend.xyaxis"
                 )
-                
+
                 MetricCard(
                     title: "Available Credit",
                     value: formatCurrency(totalAvailableCredit),
                     color: .blue,
                     icon: "creditcard.circle"
                 )
-                
+
                 MetricCard(
                     title: "Monthly Minimums",
                     value: formatCurrency(totalMinimumPayments),
                     color: .orange,
                     icon: "calendar"
                 )
-                
+
                 MetricCard(
                     title: "Credit Utilization",
                     value: String(format: "%.1f%%", NSDecimalNumber(decimal: creditUtilization).doubleValue),
@@ -806,7 +881,7 @@ struct DashboardView: View {
                     icon: "percent"
                 )
             }
-            
+
             // Second row - subscriptions and future features
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
                 MetricCard(
@@ -815,14 +890,14 @@ struct DashboardView: View {
                     color: .purple,
                     icon: "repeat"
                 )
-                
+
                 MetricCard(
                     title: "Income Sources",
                     value: "Coming Soon",
                     color: .secondary,
                     icon: "dollarsign.circle"
                 )
-                
+
                 MetricCard(
                     title: "Cash Flow",
                     value: "Coming Soon",
@@ -838,86 +913,197 @@ struct DashboardView: View {
             Text("Payment Strategy")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                // Strategy selection and extra payment input
-                HStack {
-                    Picker("Strategy", selection: $selectedStrategy) {
-                        Text("Avalanche (Highest APR)").tag(PaymentStrategy.avalanche)
-                        Text("Snowball (Lowest Balance)").tag(PaymentStrategy.snowball)
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    Spacer()
-                    
-                    VStack(alignment: .leading) {
-                        HStack {
-                            Text("Next Paycheck:")
-                            DatePicker("", selection: $nextPaycheckDate, displayedComponents: .date)
-                                .labelsHidden()
-                                .frame(width: 120)
-                        }
-                        HStack {
-                            Text("Second Paycheck:")
-                            DatePicker("", selection: $secondPaycheckDate, displayedComponents: .date)
-                                .labelsHidden()
-                                .frame(width: 120)
-                        }
-                        HStack {
-                            Text("Paycheck Amount:")
-                            TextField("$0", value: $nextPaycheckAmount, format: .currency(code: "USD"))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
-                        }
-                        HStack {
-                            Text("Safety Buffer:")
-                            TextField("$0", value: $safetyAmount, format: .currency(code: "USD"))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Checking: \(formatCurrency(totalCheckingBalance)) - Safety: \(formatCurrency(safetyAmount))")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("Available for payments: \(formatCurrency(availableForPayments))")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundColor(availableForPayments > 0 ? .primary : .red)
-                            
-                            if period2Shortfall > 0 {
-                                Text("⚠️ Next paycheck shortfall: \(formatCurrency(period2Shortfall))")
-                                    .font(.caption)
-                                    .foregroundColor(.orange)
-                            }
-                            
-                            if isLongPaycheckPeriod {
-                                Text("⚠️ Long paycheck period - calculations may be unstable")
-                                    .font(.caption)
-                                    .foregroundColor(.red)
-                            }
-                        }
-                    }
+
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                compactPaymentStrategy
+            } else {
+                regularPaymentStrategy
+            }
+            #else
+            regularPaymentStrategy
+            #endif
+        }
+    }
+
+    // iPhone: Vertical stack layout
+    private var compactPaymentStrategy: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Strategy picker at top (full width)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Strategy")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Picker("Strategy", selection: $selectedStrategy) {
+                    Text("Avalanche").tag(PaymentStrategy.avalanche)
+                    Text("Snowball").tag(PaymentStrategy.snowball)
                 }
-                
-                // Payment plan display
-                if !debtAccounts.isEmpty && availableForPayments > 0 {
-                    paymentPlanView
-                } else if debtAccounts.isEmpty {
-                    Text("No debt accounts found - you're debt free! 🎉")
-                        .foregroundColor(.secondary)
-                        .padding()
-                        .background(Color.green.opacity(0.1))
-                        .cornerRadius(8)
-                } else {
-                    Text("Enter an extra payment amount to see your payment strategy")
-                        .foregroundColor(.secondary)
-                        .italic()
+                .pickerStyle(.segmented)
+            }
+
+            // Paycheck inputs stacked
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Next Paycheck:")
+                        .font(.subheadline)
+                    Spacer()
+                    DatePicker("", selection: $nextPaycheckDate, displayedComponents: .date)
+                        .labelsHidden()
+                }
+
+                HStack {
+                    Text("Second Paycheck:")
+                        .font(.subheadline)
+                    Spacer()
+                    DatePicker("", selection: $secondPaycheckDate, displayedComponents: .date)
+                        .labelsHidden()
+                }
+
+                HStack {
+                    Text("Paycheck Amount:")
+                        .font(.subheadline)
+                    Spacer()
+                    TextField("$0", value: $nextPaycheckAmount, format: .currency(code: "USD"))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 120)
+                        .multilineTextAlignment(.trailing)
+                }
+
+                HStack {
+                    Text("Safety Buffer:")
+                        .font(.subheadline)
+                    Spacer()
+                    TextField("$0", value: $safetyAmount, format: .currency(code: "USD"))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 120)
+                        .multilineTextAlignment(.trailing)
                 }
             }
-            .padding()
-            .background(.thinMaterial)
-            .cornerRadius(12)
+
+            // Summary info
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Checking: \(formatCurrency(totalCheckingBalance)) - Safety: \(formatCurrency(safetyAmount))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("Available for payments: \(formatCurrency(availableForPayments))")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(availableForPayments > 0 ? .primary : .red)
+
+                if period2Shortfall > 0 {
+                    Text("⚠️ Next paycheck shortfall: \(formatCurrency(period2Shortfall))")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+
+                if isLongPaycheckPeriod {
+                    Text("⚠️ Long paycheck period - calculations may be unstable")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+            }
+            .padding(.top, 4)
+
+            // Payment plan display
+            if !debtAccounts.isEmpty && availableForPayments > 0 {
+                paymentPlanView
+            } else if debtAccounts.isEmpty {
+                Text("No debt accounts found - you're debt free! 🎉")
+                    .foregroundColor(.secondary)
+                    .padding()
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(8)
+            } else {
+                Text("Enter an extra payment amount to see your payment strategy")
+                    .foregroundColor(.secondary)
+                    .italic()
+            }
         }
+        .padding()
+        .background(.thinMaterial)
+        .cornerRadius(12)
+    }
+
+    // iPad/macOS: Original horizontal layout
+    private var regularPaymentStrategy: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Strategy selection and extra payment input
+            HStack {
+                Picker("Strategy", selection: $selectedStrategy) {
+                    Text("Avalanche (Highest APR)").tag(PaymentStrategy.avalanche)
+                    Text("Snowball (Lowest Balance)").tag(PaymentStrategy.snowball)
+                }
+                .pickerStyle(.segmented)
+
+                Spacer()
+
+                VStack(alignment: .leading) {
+                    HStack {
+                        Text("Next Paycheck:")
+                        DatePicker("", selection: $nextPaycheckDate, displayedComponents: .date)
+                            .labelsHidden()
+                            .frame(width: 120)
+                    }
+                    HStack {
+                        Text("Second Paycheck:")
+                        DatePicker("", selection: $secondPaycheckDate, displayedComponents: .date)
+                            .labelsHidden()
+                            .frame(width: 120)
+                    }
+                    HStack {
+                        Text("Paycheck Amount:")
+                        TextField("$0", value: $nextPaycheckAmount, format: .currency(code: "USD"))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                    }
+                    HStack {
+                        Text("Safety Buffer:")
+                        TextField("$0", value: $safetyAmount, format: .currency(code: "USD"))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Checking: \(formatCurrency(totalCheckingBalance)) - Safety: \(formatCurrency(safetyAmount))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Available for payments: \(formatCurrency(availableForPayments))")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(availableForPayments > 0 ? .primary : .red)
+
+                        if period2Shortfall > 0 {
+                            Text("⚠️ Next paycheck shortfall: \(formatCurrency(period2Shortfall))")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+
+                        if isLongPaycheckPeriod {
+                            Text("⚠️ Long paycheck period - calculations may be unstable")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
+            }
+
+            // Payment plan display
+            if !debtAccounts.isEmpty && availableForPayments > 0 {
+                paymentPlanView
+            } else if debtAccounts.isEmpty {
+                Text("No debt accounts found - you're debt free! 🎉")
+                    .foregroundColor(.secondary)
+                    .padding()
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(8)
+            } else {
+                Text("Enter an extra payment amount to see your payment strategy")
+                    .foregroundColor(.secondary)
+                    .italic()
+            }
+        }
+        .padding()
+        .background(.thinMaterial)
+        .cornerRadius(12)
     }
 
     private var paymentPlanView: some View {
