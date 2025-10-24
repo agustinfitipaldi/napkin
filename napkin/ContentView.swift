@@ -197,14 +197,15 @@ struct ContentView: View {
 
 struct SubscriptionsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query private var subscriptions: [Subscription]
-    
+
     @State private var showingAddSubscription = false
     @State private var selectedSubscription: Subscription?
     @State private var showingEditSubscription = false
     @State private var showInactiveSubscriptions = false
     @State private var selectedCategory: SubscriptionCategory?
-    
+
     private var filteredSubscriptions: [Subscription] {
         subscriptions.filter { subscription in
             let activeFilter = showInactiveSubscriptions || subscription.isActive
@@ -212,12 +213,41 @@ struct SubscriptionsView: View {
             return activeFilter && categoryFilter
         }
     }
-    
+
     private var totalMonthlyCost: Decimal {
         subscriptions.totalMonthlyCost()
     }
-    
+
     var body: some View {
+        #if os(iOS)
+        // iPhone: Simple list without NavigationSplitView (already in NavigationStack from ContentView)
+        if horizontalSizeClass == .compact {
+            compactLayout
+        } else {
+            // iPad: Use NavigationSplitView
+            splitViewLayout
+        }
+        #else
+        // macOS: Always use NavigationSplitView
+        splitViewLayout
+        #endif
+    }
+
+    // MARK: - Compact Layout (iPhone)
+    private var compactLayout: some View {
+        subscriptionList
+            .sheet(isPresented: $showingAddSubscription) {
+                SubscriptionFormView(subscription: nil)
+            }
+            .sheet(isPresented: $showingEditSubscription) {
+                if let selectedSubscription {
+                    SubscriptionFormView(subscription: selectedSubscription)
+                }
+            }
+    }
+
+    // MARK: - Split View Layout (iPad/macOS)
+    private var splitViewLayout: some View {
         NavigationSplitView {
             subscriptionList
         } detail: {
@@ -226,21 +256,21 @@ struct SubscriptionsView: View {
             } else {
                 VStack(spacing: 24) {
                     Spacer()
-                    
+
                     VStack(spacing: 16) {
                         Image(systemName: "repeat.circle")
                             .font(.system(size: 48))
                             .foregroundColor(.accentColor)
-                        
+
                         Text("Subscription Tracker")
                             .font(.largeTitle)
                             .fontWeight(.semibold)
-                        
+
                         Text("Keep track of all your recurring expenses")
                             .font(.body)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
-                        
+
                         if totalMonthlyCost > 0 {
                             Text("Total: \(formatCurrency(totalMonthlyCost))/month")
                                 .font(.title2)
@@ -248,7 +278,7 @@ struct SubscriptionsView: View {
                                 .foregroundColor(.primary)
                         }
                     }
-                    
+
                     Button(action: { showingAddSubscription = true }) {
                         HStack {
                             Image(systemName: "plus")
@@ -259,7 +289,7 @@ struct SubscriptionsView: View {
                         .padding(.vertical, 12)
                     }
                     .buttonStyle(.borderedProminent)
-                    
+
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -276,11 +306,132 @@ struct SubscriptionsView: View {
     }
     
     private var subscriptionList: some View {
+        Group {
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                // iPhone: List without selection, using NavigationLink
+                compactSubscriptionList
+            } else {
+                // iPad: List with selection
+                regularSubscriptionList
+            }
+            #else
+            // macOS: List with selection
+            regularSubscriptionList
+            #endif
+        }
+    }
+
+    // iPhone list with NavigationLink
+    private var compactSubscriptionList: some View {
+        List {
+            ForEach(SubscriptionCategory.allCases, id: \.self) { category in
+                let subscriptionsForCategory = filteredSubscriptions.filter { $0.category == category }
+                    .sorted { $0.name < $1.name }
+
+                if !subscriptionsForCategory.isEmpty {
+                    Section {
+                        ForEach(subscriptionsForCategory) { subscription in
+                            NavigationLink {
+                                SubscriptionDetailView(subscription: subscription)
+                            } label: {
+                                SubscriptionRowView(subscription: subscription)
+                            }
+                            .contextMenu {
+                                Button("Edit") {
+                                    selectedSubscription = subscription
+                                    showingEditSubscription = true
+                                }
+
+                                if subscription.isActive {
+                                    Button("Mark Inactive") {
+                                        toggleSubscriptionActive(subscription)
+                                    }
+                                } else {
+                                    Button("Mark Active") {
+                                        toggleSubscriptionActive(subscription)
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        HStack {
+                            Image(systemName: category.systemImage)
+                                .foregroundColor(colorForCategory(category))
+                            Text(category.rawValue)
+                            Spacer()
+                            Text(formatCurrency(subscriptions.totalMonthlyCost(for: category)))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+
+            if filteredSubscriptions.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "repeat.circle")
+                        .font(.system(size: 32))
+                        .foregroundColor(.secondary)
+
+                    Text("No subscriptions found")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+
+                    Text("Add your first subscription to get started")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Button("Add Subscription") {
+                        showingAddSubscription = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .navigationTitle("Subscriptions")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(action: { showingAddSubscription = true }) {
+                        Label("Add Subscription", systemImage: "plus")
+                    }
+
+                    Button(action: { showInactiveSubscriptions.toggle() }) {
+                        Label(showInactiveSubscriptions ? "Hide Inactive" : "Show Inactive",
+                              systemImage: showInactiveSubscriptions ? "eye.slash" : "eye")
+                    }
+
+                    Divider()
+
+                    Button("All Categories") {
+                        selectedCategory = nil
+                    }
+
+                    ForEach(SubscriptionCategory.allCases, id: \.self) { category in
+                        Button(action: {
+                            selectedCategory = selectedCategory == category ? nil : category
+                        }) {
+                            Label(category.rawValue, systemImage: category.systemImage)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+    }
+
+    // iPad/macOS list with selection binding
+    private var regularSubscriptionList: some View {
         List(selection: $selectedSubscription) {
             ForEach(SubscriptionCategory.allCases, id: \.self) { category in
                 let subscriptionsForCategory = filteredSubscriptions.filter { $0.category == category }
                     .sorted { $0.name < $1.name }
-                
+
                 if !subscriptionsForCategory.isEmpty {
                     Section {
                         ForEach(subscriptionsForCategory) { subscription in
@@ -298,7 +449,7 @@ struct SubscriptionsView: View {
                                         selectedSubscription = subscription
                                         showingEditSubscription = true
                                     }
-                                    
+
                                     if subscription.isActive {
                                         Button("Mark Inactive") {
                                             toggleSubscriptionActive(subscription)
@@ -323,22 +474,22 @@ struct SubscriptionsView: View {
                     }
                 }
             }
-            
+
             if filteredSubscriptions.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "repeat.circle")
                         .font(.system(size: 32))
                         .foregroundColor(.secondary)
-                    
+
                     Text("No subscriptions found")
                         .font(.headline)
                         .foregroundColor(.secondary)
-                    
+
                     Text("Add your first subscription to get started")
                         .font(.body)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                    
+
                     Button("Add Subscription") {
                         showingAddSubscription = true
                     }
@@ -356,33 +507,33 @@ struct SubscriptionsView: View {
                     Label("Add Subscription", systemImage: "plus")
                 }
             }
-            
+
             ToolbarItem(placement: .secondaryAction) {
-                Button(action: { 
+                Button(action: {
                     if selectedSubscription != nil {
-                        showingEditSubscription = true 
+                        showingEditSubscription = true
                     }
                 }) {
                     Label("Edit Subscription", systemImage: "pencil")
                 }
                 .disabled(selectedSubscription == nil)
             }
-            
+
             ToolbarItem(placement: .secondaryAction) {
-                Button(action: { 
+                Button(action: {
                     showInactiveSubscriptions.toggle()
                 }) {
-                    Label(showInactiveSubscriptions ? "Hide Inactive" : "Show Inactive", 
+                    Label(showInactiveSubscriptions ? "Hide Inactive" : "Show Inactive",
                           systemImage: showInactiveSubscriptions ? "eye.slash" : "eye")
                 }
             }
-            
+
             ToolbarItem(placement: .secondaryAction) {
                 Menu {
                     Button("All Categories") {
                         selectedCategory = nil
                     }
-                    
+
                     ForEach(SubscriptionCategory.allCases, id: \.self) { category in
                         Button(action: {
                             selectedCategory = selectedCategory == category ? nil : category
