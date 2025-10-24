@@ -349,8 +349,9 @@ struct AccountDetailView: View {
     }
     
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+        ZStack(alignment: .bottomTrailing) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
                 // Account Header
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -476,12 +477,34 @@ struct AccountDetailView: View {
             }
             .padding()
         }
-        .navigationTitle(account.accountName)
+
+        // Floating action button for quick balance entry
+        Button(action: {
+            showingQuickBalanceEntry = true
+        }) {
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 60, height: 60)
+                    .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 6)
+
+                Image(systemName: "pencil.circle.fill")
+                    .font(.system(size: 56))
+                    .foregroundStyle(.white, .tint)
+                    .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+            }
+        }
+        .padding(.trailing, 20)
+        .padding(.bottom, 20)
+        .buttonStyle(.plain)
+        .help("Edit all balances at once")
+    }
+    .navigationTitle(account.accountName)
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 HStack {
                     Spacer()
-                    
+
                     if !account.isActive {
                         Button("Reactivate") {
                             reactivateAccount()
@@ -489,25 +512,12 @@ struct AccountDetailView: View {
                         .buttonStyle(.bordered)
                         .help("Reactivate this account")
                     }
-                    
+
                     Button("Edit Balance") {
                         showingAddBalance = true
                     }
                     .buttonStyle(.bordered)
                     .help("Add a new balance entry for this account")
-                    
-                    Button(action: { 
-                        showingQuickBalanceEntry = true
-                    }) {
-                        Text("Edit All")
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .background(Color.accentColor)
-                    .cornerRadius(6)
-                    .controlSize(.regular)
-                    .help("Enter balances for all accounts at once (⌘B)")
                 }
             }
         }
