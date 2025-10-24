@@ -25,9 +25,11 @@ enum SidebarSection: String, CaseIterable, Identifiable {
     }
 }
 
+#if os(macOS)
+// macOS version with selection binding
 struct SidebarView: View {
     @Binding var selectedSection: SidebarSection
-    
+
     var body: some View {
         List(SidebarSection.allCases, selection: $selectedSection) { section in
             NavigationLink(value: section) {
@@ -38,6 +40,26 @@ struct SidebarView: View {
         .navigationSplitViewColumnWidth(min: 120, ideal: 140, max: 160)
     }
 }
+#else
+// iOS version without selection binding (List with selection unavailable on iOS)
+struct SidebarView: View {
+    @Binding var selectedSection: SidebarSection
+
+    var body: some View {
+        List {
+            ForEach(SidebarSection.allCases) { section in
+                Button {
+                    selectedSection = section
+                } label: {
+                    Label(section.rawValue, systemImage: section.systemImage)
+                        .foregroundColor(.primary)
+                }
+            }
+        }
+        .navigationTitle("Napkin")
+    }
+}
+#endif
 
 struct ContentView: View {
     @State private var selectedSection: SidebarSection = .accounts
