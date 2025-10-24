@@ -205,7 +205,7 @@ struct AccountListView: View {
         }
         .navigationTitle("Accounts")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .automatic) {
                 Menu {
                     Button(action: { showingAddAccount = true }) {
                         Label("Add Account", systemImage: "plus")

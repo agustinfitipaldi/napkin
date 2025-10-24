@@ -87,7 +87,7 @@ struct ContentView: View {
                 AccountListView()
                     .navigationTitle("Accounts")
                     .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
+                        ToolbarItem(placement: .automatic) {
                             Button {
                                 showingSettings = true
                             } label: {
@@ -105,7 +105,7 @@ struct ContentView: View {
                 SubscriptionsView()
                     .navigationTitle("Subscriptions")
                     .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
+                        ToolbarItem(placement: .automatic) {
                             Button {
                                 showingSettings = true
                             } label: {
@@ -123,7 +123,7 @@ struct ContentView: View {
                 DashboardView()
                     .navigationTitle("Dashboard")
                     .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
+                        ToolbarItem(placement: .automatic) {
                             Button {
                                 showingSettings = true
                             } label: {
@@ -141,7 +141,9 @@ struct ContentView: View {
             NavigationStack {
                 SettingsView()
                     .navigationTitle("Settings")
+                    #if os(iOS)
                     .navigationBarTitleDisplayMode(.inline)
+                    #endif
             }
         }
     }
@@ -161,7 +163,7 @@ struct ContentView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .automatic) {
                 Button {
                     showingSettings = true
                 } label: {
@@ -173,7 +175,9 @@ struct ContentView: View {
             NavigationStack {
                 SettingsView()
                     .navigationTitle("Settings")
+                    #if os(iOS)
                     .navigationBarTitleDisplayMode(.inline)
+                    #endif
             }
         }
     }
@@ -394,7 +398,7 @@ struct SubscriptionsView: View {
         }
         .navigationTitle("Subscriptions")
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItem(placement: .automatic) {
                 Menu {
                     Button(action: { showingAddSubscription = true }) {
                         Label("Add Subscription", systemImage: "plus")
