@@ -10,9 +10,10 @@ import SwiftData
 
 struct AccountListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Query
     private var accounts: [Account]
-    
+
     @State private var showingAddAccount = false
     @State private var selectedAccount: Account?
     @State private var showingEditAccount = false
@@ -20,10 +21,57 @@ struct AccountListView: View {
     @State private var showingDeleteConfirmation = false
     @State private var accountToDelete: Account?
     @State private var showingQuickBalanceEntry = false
-    
+
     public init() {}
-    
+
     var body: some View {
+        #if os(iOS)
+        // iPhone: Simple list without NavigationSplitView (already in NavigationStack from ContentView)
+        if horizontalSizeClass == .compact {
+            compactLayout
+        } else {
+            // iPad: Use NavigationSplitView
+            splitViewLayout
+        }
+        #else
+        // macOS: Always use NavigationSplitView
+        splitViewLayout
+        #endif
+    }
+
+    // MARK: - Compact Layout (iPhone)
+    private var compactLayout: some View {
+        accountList
+            .sheet(isPresented: $showingAddAccount) {
+                AccountFormView(account: nil)
+            }
+            .sheet(isPresented: $showingEditAccount) {
+                if let selectedAccount {
+                    AccountFormView(account: selectedAccount)
+                }
+            }
+            .sheet(isPresented: $showingQuickBalanceEntry) {
+                QuickBalanceEntryView()
+            }
+            .alert("Delete Account", isPresented: $showingDeleteConfirmation) {
+                Button("Cancel", role: .cancel) {
+                    accountToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    if let account = accountToDelete {
+                        hardDeleteAccount(account)
+                        accountToDelete = nil
+                    }
+                }
+            } message: {
+                if let account = accountToDelete {
+                    Text("Are you sure you want to permanently delete \(account.bankName) \(account.accountName)? This action cannot be undone and will delete all associated balance entries.")
+                }
+            }
+    }
+
+    // MARK: - Split View Layout (iPad/macOS)
+    private var splitViewLayout: some View {
         NavigationSplitView {
             accountList
         } detail: {
@@ -32,22 +80,22 @@ struct AccountListView: View {
             } else {
                 VStack(spacing: 24) {
                     Spacer()
-                    
+
                     VStack(spacing: 16) {
                         Image(systemName: "square.and.pencil")
                             .font(.system(size: 48))
                             .foregroundColor(.accentColor)
-                        
+
                         Text("Quick Balance Entry")
                             .font(.largeTitle)
                             .fontWeight(.semibold)
-                        
+
                         Text("Enter balances for all your accounts at once")
                             .font(.body)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
                     }
-                    
+
                     Button(action: { showingQuickBalanceEntry = true }) {
                         HStack {
                             Image(systemName: "square.and.pencil")
@@ -60,7 +108,7 @@ struct AccountListView: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut("b", modifiers: .command)
                     .help("Enter balances for all accounts at once (⌘B)")
-                    
+
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -103,6 +151,79 @@ struct AccountListView: View {
     }
     
     private var accountList: some View {
+        Group {
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                // iPhone: List without selection, using NavigationLink
+                compactAccountList
+            } else {
+                // iPad: List with selection
+                regularAccountList
+            }
+            #else
+            // macOS: List with selection
+            regularAccountList
+            #endif
+        }
+    }
+
+    // iPhone list with NavigationLink
+    private var compactAccountList: some View {
+        List {
+            ForEach(AccountType.allCases, id: \.self) { type in
+                let accountsForType = accounts.filter { account in
+                    account.accountType == type && (showInactiveAccounts || account.isActive)
+                }.sorted { $0.bankName < $1.bankName }
+                if !accountsForType.isEmpty {
+                    Section(type.rawValue) {
+                        ForEach(accountsForType) { account in
+                            NavigationLink {
+                                AccountDetailView(account: account, showingQuickBalanceEntry: $showingQuickBalanceEntry)
+                            } label: {
+                                AccountRowView(account: account)
+                            }
+                            .contextMenu {
+                                if account.isActive {
+                                    Button("Inactivate Account") {
+                                        inactivateAccount(account)
+                                    }
+                                } else {
+                                    Button("Reactivate Account") {
+                                        reactivateAccount(account)
+                                    }
+                                }
+
+                                Button("Delete Account", role: .destructive) {
+                                    accountToDelete = account
+                                    showingDeleteConfirmation = true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Accounts")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(action: { showingAddAccount = true }) {
+                        Label("Add Account", systemImage: "plus")
+                    }
+
+                    Button(action: { showInactiveAccounts.toggle() }) {
+                        Label(showInactiveAccounts ? "Hide Inactive" : "Show Inactive",
+                              systemImage: showInactiveAccounts ? "eye.slash" : "eye")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+    }
+
+    // iPad/macOS list with selection binding
+    private var regularAccountList: some View {
         List(selection: $selectedAccount) {
             ForEach(AccountType.allCases, id: \.self) { type in
                 let accountsForType = accounts.filter { account in
@@ -130,7 +251,7 @@ struct AccountListView: View {
                                             reactivateAccount(account)
                                         }
                                     }
-                                    
+
                                     Button("Delete Account", role: .destructive) {
                                         accountToDelete = account
                                         showingDeleteConfirmation = true
@@ -150,11 +271,11 @@ struct AccountListView: View {
                 }
                 .help("Add a new account to track")
             }
-            
+
             ToolbarItem(placement: .secondaryAction) {
-                Button(action: { 
+                Button(action: {
                     if selectedAccount != nil {
-                        showingEditAccount = true 
+                        showingEditAccount = true
                     }
                 }) {
                     Label("Edit Account", systemImage: "pencil")
@@ -162,12 +283,12 @@ struct AccountListView: View {
                 .disabled(selectedAccount == nil)
                 .help("Edit the selected account")
             }
-            
+
             ToolbarItem(placement: .secondaryAction) {
-                Button(action: { 
+                Button(action: {
                     showInactiveAccounts.toggle()
                 }) {
-                    Label(showInactiveAccounts ? "Hide Inactive" : "Show Inactive", 
+                    Label(showInactiveAccounts ? "Hide Inactive" : "Show Inactive",
                           systemImage: showInactiveAccounts ? "eye.slash" : "eye")
                 }
                 .help(showInactiveAccounts ? "Hide inactive accounts" : "Show inactive accounts")
