@@ -216,30 +216,40 @@ struct AccountListView: View {
                         Label(showInactiveAccounts ? "Hide Inactive" : "Show Inactive",
                               systemImage: showInactiveAccounts ? "eye.slash" : "eye")
                     }
+
+                    Button(action: {
+                        try? modelContext.save()
+                    }) {
+                        Label("Sync Now", systemImage: "arrow.clockwise")
+                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }
             }
         }
 
-        // Floating action button for quick balance entry - true glassmorphism
+        // Floating action button for quick balance entry - ultra-frosted glass
         Button(action: {
             showingQuickBalanceEntry = true
         }) {
             ZStack {
                 Circle()
-                    .fill(.regularMaterial)
+                    .fill(.ultraThinMaterial)
                     .frame(width: 60, height: 60)
-                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 4)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(.primary.opacity(0.1), lineWidth: 0.5)
+                    )
+                    .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 2)
 
-                Image(systemName: "pencil.circle.fill")
+                Image(systemName: "pencil.circle")
                     .font(.system(size: 50))
                     .foregroundStyle(.primary)
             }
         }
         .buttonStyle(.plain)
-        .padding(.trailing, 20)
-        .padding(.bottom, 80)  // Account for tab bar on iPhone
+        .padding(.trailing, 24)
+        .padding(.bottom, 24)
         .help("Edit all balances at once")
     }
     }
@@ -314,6 +324,15 @@ struct AccountListView: View {
                           systemImage: showInactiveAccounts ? "eye.slash" : "eye")
                 }
                 .help(showInactiveAccounts ? "Hide inactive accounts" : "Show inactive accounts")
+            }
+
+            ToolbarItem(placement: .secondaryAction) {
+                Button(action: {
+                    try? modelContext.save()
+                }) {
+                    Label("Sync Now", systemImage: "arrow.clockwise")
+                }
+                .help("Sync data with iCloud")
             }
         }
     }

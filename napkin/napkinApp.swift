@@ -10,35 +10,33 @@ import SwiftData
 
 @main
 struct napkinApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Account.self,
-            BalanceEntry.self,
-            GlobalSettings.self,
-            PaymentPlan.self,
-            PlannedPayment.self,
-            Subscription.self,
-            PaycheckConfig.self,
-        ])
+    @Environment(\.scenePhase) private var scenePhase
 
+    var sharedModelContainer: ModelContainer = {
         // Try CloudKit sync first, fall back to local-only if it fails
         // CloudKit requires: iCloud account signed in + proper entitlements configured
         do {
             let cloudConfig = ModelConfiguration(
-                schema: schema,
                 isStoredInMemoryOnly: false,
                 cloudKitDatabase: .automatic
             )
-            return try ModelContainer(for: schema, configurations: [cloudConfig])
+            return try ModelContainer(
+                for: Account.self, BalanceEntry.self, GlobalSettings.self,
+                PaymentPlan.self, PlannedPayment.self, Subscription.self, PaycheckConfig.self,
+                configurations: cloudConfig
+            )
         } catch {
             // CloudKit not available - fall back to local storage
             print("⚠️ CloudKit unavailable, using local storage only: \(error)")
             do {
                 let localConfig = ModelConfiguration(
-                    schema: schema,
                     isStoredInMemoryOnly: false
                 )
-                return try ModelContainer(for: schema, configurations: [localConfig])
+                return try ModelContainer(
+                    for: Account.self, BalanceEntry.self, GlobalSettings.self,
+                    PaymentPlan.self, PlannedPayment.self, Subscription.self, PaycheckConfig.self,
+                    configurations: localConfig
+                )
             } catch {
                 fatalError("Could not create ModelContainer even with local storage: \(error)")
             }
@@ -50,6 +48,13 @@ struct napkinApp: App {
             ContentView()
         }
         .modelContainer(sharedModelContainer)
+        .onChange(of: scenePhase) {
+            if scenePhase == .active {
+                // Trigger CloudKit sync when app becomes active
+                // SwiftData will automatically import remote changes
+                try? sharedModelContainer.mainContext.save()
+            }
+        }
         #if os(macOS)
         .defaultSize(width: 1040, height: 650)
         .commands {
