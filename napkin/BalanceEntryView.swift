@@ -53,8 +53,8 @@ struct BalanceEntryView: View {
                 .buttonStyle(.borderedProminent)
             }
             .padding()
-            .background(Color(NSColor.windowBackgroundColor))
-            
+            .background(.regularMaterial)
+
             Divider()
             
             // Form content
@@ -81,7 +81,7 @@ struct BalanceEntryView: View {
                             Spacer()
                         }
                         .padding()
-                        .background(Color(NSColor.controlBackgroundColor))
+                        .background(.thinMaterial)
                         .cornerRadius(8)
                     }
                     
@@ -161,7 +161,9 @@ struct BalanceEntryView: View {
                 .padding()
             }
         }
+        #if os(macOS)
         .frame(minWidth: 400, maxWidth: 500, minHeight: 300)
+        #endif
         .alert("Error", isPresented: $showingError) {
             Button("OK") { }
         } message: {

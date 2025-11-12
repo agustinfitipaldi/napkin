@@ -25,9 +25,11 @@ enum SidebarSection: String, CaseIterable, Identifiable {
     }
 }
 
+#if os(macOS)
+// macOS version with selection binding
 struct SidebarView: View {
     @Binding var selectedSection: SidebarSection
-    
+
     var body: some View {
         List(SidebarSection.allCases, selection: $selectedSection) { section in
             NavigationLink(value: section) {
@@ -38,11 +40,150 @@ struct SidebarView: View {
         .navigationSplitViewColumnWidth(min: 120, ideal: 140, max: 160)
     }
 }
+#else
+// iOS version without selection binding (List with selection unavailable on iOS)
+struct SidebarView: View {
+    @Binding var selectedSection: SidebarSection
+
+    var body: some View {
+        List {
+            ForEach(SidebarSection.allCases) { section in
+                Button {
+                    selectedSection = section
+                } label: {
+                    Label(section.rawValue, systemImage: section.systemImage)
+                        .foregroundColor(.primary)
+                }
+            }
+        }
+        .navigationTitle("Napkin")
+    }
+}
+#endif
 
 struct ContentView: View {
     @State private var selectedSection: SidebarSection = .accounts
-    
+    @State private var showingSettings = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     var body: some View {
+        #if os(iOS)
+        // Use TabView on iPhone, NavigationSplitView on iPad
+        if horizontalSizeClass == .compact {
+            iPhoneLayout
+        } else {
+            iPadLayout
+        }
+        #else
+        // macOS always uses NavigationSplitView
+        macOSLayout
+        #endif
+    }
+
+    // MARK: - iPhone Layout (TabView)
+    private var iPhoneLayout: some View {
+        TabView(selection: $selectedSection) {
+            NavigationStack {
+                AccountListView()
+                    .navigationTitle("Accounts")
+                    .toolbar {
+                        ToolbarItem(placement: .automatic) {
+                            Button {
+                                showingSettings = true
+                            } label: {
+                                Label("Settings", systemImage: "gear")
+                            }
+                        }
+                    }
+            }
+            .tabItem {
+                Label("Accounts", systemImage: "creditcard")
+            }
+            .tag(SidebarSection.accounts)
+
+            NavigationStack {
+                SubscriptionsView()
+                    .navigationTitle("Subscriptions")
+                    .toolbar {
+                        ToolbarItem(placement: .automatic) {
+                            Button {
+                                showingSettings = true
+                            } label: {
+                                Label("Settings", systemImage: "gear")
+                            }
+                        }
+                    }
+            }
+            .tabItem {
+                Label("Subscriptions", systemImage: "repeat")
+            }
+            .tag(SidebarSection.subscriptions)
+
+            NavigationStack {
+                DashboardView()
+                    .navigationTitle("Dashboard")
+                    .toolbar {
+                        ToolbarItem(placement: .automatic) {
+                            Button {
+                                showingSettings = true
+                            } label: {
+                                Label("Settings", systemImage: "gear")
+                            }
+                        }
+                    }
+            }
+            .tabItem {
+                Label("Dashboard", systemImage: "chart.bar")
+            }
+            .tag(SidebarSection.dashboard)
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsView()
+                    .navigationTitle("Settings")
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+            }
+        }
+    }
+
+    // MARK: - iPad Layout (NavigationSplitView)
+    private var iPadLayout: some View {
+        NavigationSplitView {
+            SidebarView(selectedSection: $selectedSection)
+        } detail: {
+            switch selectedSection {
+            case .accounts:
+                AccountListView()
+            case .subscriptions:
+                SubscriptionsView()
+            case .dashboard:
+                DashboardView()
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    showingSettings = true
+                } label: {
+                    Label("Settings", systemImage: "gear")
+                }
+            }
+        }
+        .sheet(isPresented: $showingSettings) {
+            NavigationStack {
+                SettingsView()
+                    .navigationTitle("Settings")
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+            }
+        }
+    }
+
+    // MARK: - macOS Layout (NavigationSplitView)
+    private var macOSLayout: some View {
         NavigationSplitView {
             SidebarView(selectedSection: $selectedSection)
         } detail: {
@@ -60,14 +201,15 @@ struct ContentView: View {
 
 struct SubscriptionsView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query private var subscriptions: [Subscription]
-    
+
     @State private var showingAddSubscription = false
     @State private var selectedSubscription: Subscription?
     @State private var showingEditSubscription = false
     @State private var showInactiveSubscriptions = false
     @State private var selectedCategory: SubscriptionCategory?
-    
+
     private var filteredSubscriptions: [Subscription] {
         subscriptions.filter { subscription in
             let activeFilter = showInactiveSubscriptions || subscription.isActive
@@ -75,12 +217,41 @@ struct SubscriptionsView: View {
             return activeFilter && categoryFilter
         }
     }
-    
+
     private var totalMonthlyCost: Decimal {
         subscriptions.totalMonthlyCost()
     }
-    
+
     var body: some View {
+        #if os(iOS)
+        // iPhone: Simple list without NavigationSplitView (already in NavigationStack from ContentView)
+        if horizontalSizeClass == .compact {
+            compactLayout
+        } else {
+            // iPad: Use NavigationSplitView
+            splitViewLayout
+        }
+        #else
+        // macOS: Always use NavigationSplitView
+        splitViewLayout
+        #endif
+    }
+
+    // MARK: - Compact Layout (iPhone)
+    private var compactLayout: some View {
+        subscriptionList
+            .sheet(isPresented: $showingAddSubscription) {
+                SubscriptionFormView(subscription: nil)
+            }
+            .sheet(isPresented: $showingEditSubscription) {
+                if let selectedSubscription {
+                    SubscriptionFormView(subscription: selectedSubscription)
+                }
+            }
+    }
+
+    // MARK: - Split View Layout (iPad/macOS)
+    private var splitViewLayout: some View {
         NavigationSplitView {
             subscriptionList
         } detail: {
@@ -89,21 +260,21 @@ struct SubscriptionsView: View {
             } else {
                 VStack(spacing: 24) {
                     Spacer()
-                    
+
                     VStack(spacing: 16) {
                         Image(systemName: "repeat.circle")
                             .font(.system(size: 48))
                             .foregroundColor(.accentColor)
-                        
+
                         Text("Subscription Tracker")
                             .font(.largeTitle)
                             .fontWeight(.semibold)
-                        
+
                         Text("Keep track of all your recurring expenses")
                             .font(.body)
                             .foregroundColor(.secondary)
                             .multilineTextAlignment(.center)
-                        
+
                         if totalMonthlyCost > 0 {
                             Text("Total: \(formatCurrency(totalMonthlyCost))/month")
                                 .font(.title2)
@@ -111,7 +282,7 @@ struct SubscriptionsView: View {
                                 .foregroundColor(.primary)
                         }
                     }
-                    
+
                     Button(action: { showingAddSubscription = true }) {
                         HStack {
                             Image(systemName: "plus")
@@ -122,7 +293,7 @@ struct SubscriptionsView: View {
                         .padding(.vertical, 12)
                     }
                     .buttonStyle(.borderedProminent)
-                    
+
                     Spacer()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -139,11 +310,132 @@ struct SubscriptionsView: View {
     }
     
     private var subscriptionList: some View {
+        Group {
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                // iPhone: List without selection, using NavigationLink
+                compactSubscriptionList
+            } else {
+                // iPad: List with selection
+                regularSubscriptionList
+            }
+            #else
+            // macOS: List with selection
+            regularSubscriptionList
+            #endif
+        }
+    }
+
+    // iPhone list with NavigationLink
+    private var compactSubscriptionList: some View {
+        List {
+            ForEach(SubscriptionCategory.allCases, id: \.self) { category in
+                let subscriptionsForCategory = filteredSubscriptions.filter { $0.category == category }
+                    .sorted { $0.name < $1.name }
+
+                if !subscriptionsForCategory.isEmpty {
+                    Section {
+                        ForEach(subscriptionsForCategory) { subscription in
+                            NavigationLink {
+                                SubscriptionDetailView(subscription: subscription)
+                            } label: {
+                                SubscriptionRowView(subscription: subscription)
+                            }
+                            .contextMenu {
+                                Button("Edit") {
+                                    selectedSubscription = subscription
+                                    showingEditSubscription = true
+                                }
+
+                                if subscription.isActive {
+                                    Button("Mark Inactive") {
+                                        toggleSubscriptionActive(subscription)
+                                    }
+                                } else {
+                                    Button("Mark Active") {
+                                        toggleSubscriptionActive(subscription)
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        HStack {
+                            Image(systemName: category.systemImage)
+                                .foregroundColor(colorForCategory(category))
+                            Text(category.rawValue)
+                            Spacer()
+                            Text(formatCurrency(subscriptions.totalMonthlyCost(for: category)))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+
+            if filteredSubscriptions.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "repeat.circle")
+                        .font(.system(size: 32))
+                        .foregroundColor(.secondary)
+
+                    Text("No subscriptions found")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+
+                    Text("Add your first subscription to get started")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+
+                    Button("Add Subscription") {
+                        showingAddSubscription = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .navigationTitle("Subscriptions")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Menu {
+                    Button(action: { showingAddSubscription = true }) {
+                        Label("Add Subscription", systemImage: "plus")
+                    }
+
+                    Button(action: { showInactiveSubscriptions.toggle() }) {
+                        Label(showInactiveSubscriptions ? "Hide Inactive" : "Show Inactive",
+                              systemImage: showInactiveSubscriptions ? "eye.slash" : "eye")
+                    }
+
+                    Divider()
+
+                    Button("All Categories") {
+                        selectedCategory = nil
+                    }
+
+                    ForEach(SubscriptionCategory.allCases, id: \.self) { category in
+                        Button(action: {
+                            selectedCategory = selectedCategory == category ? nil : category
+                        }) {
+                            Label(category.rawValue, systemImage: category.systemImage)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+    }
+
+    // iPad/macOS list with selection binding
+    private var regularSubscriptionList: some View {
         List(selection: $selectedSubscription) {
             ForEach(SubscriptionCategory.allCases, id: \.self) { category in
                 let subscriptionsForCategory = filteredSubscriptions.filter { $0.category == category }
                     .sorted { $0.name < $1.name }
-                
+
                 if !subscriptionsForCategory.isEmpty {
                     Section {
                         ForEach(subscriptionsForCategory) { subscription in
@@ -161,7 +453,7 @@ struct SubscriptionsView: View {
                                         selectedSubscription = subscription
                                         showingEditSubscription = true
                                     }
-                                    
+
                                     if subscription.isActive {
                                         Button("Mark Inactive") {
                                             toggleSubscriptionActive(subscription)
@@ -186,22 +478,22 @@ struct SubscriptionsView: View {
                     }
                 }
             }
-            
+
             if filteredSubscriptions.isEmpty {
                 VStack(spacing: 12) {
                     Image(systemName: "repeat.circle")
                         .font(.system(size: 32))
                         .foregroundColor(.secondary)
-                    
+
                     Text("No subscriptions found")
                         .font(.headline)
                         .foregroundColor(.secondary)
-                    
+
                     Text("Add your first subscription to get started")
                         .font(.body)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                    
+
                     Button("Add Subscription") {
                         showingAddSubscription = true
                     }
@@ -219,33 +511,33 @@ struct SubscriptionsView: View {
                     Label("Add Subscription", systemImage: "plus")
                 }
             }
-            
+
             ToolbarItem(placement: .secondaryAction) {
-                Button(action: { 
+                Button(action: {
                     if selectedSubscription != nil {
-                        showingEditSubscription = true 
+                        showingEditSubscription = true
                     }
                 }) {
                     Label("Edit Subscription", systemImage: "pencil")
                 }
                 .disabled(selectedSubscription == nil)
             }
-            
+
             ToolbarItem(placement: .secondaryAction) {
-                Button(action: { 
+                Button(action: {
                     showInactiveSubscriptions.toggle()
                 }) {
-                    Label(showInactiveSubscriptions ? "Hide Inactive" : "Show Inactive", 
+                    Label(showInactiveSubscriptions ? "Hide Inactive" : "Show Inactive",
                           systemImage: showInactiveSubscriptions ? "eye.slash" : "eye")
                 }
             }
-            
+
             ToolbarItem(placement: .secondaryAction) {
                 Menu {
                     Button("All Categories") {
                         selectedCategory = nil
                     }
-                    
+
                     ForEach(SubscriptionCategory.allCases, id: \.self) { category in
                         Button(action: {
                             selectedCategory = selectedCategory == category ? nil : category
@@ -313,9 +605,9 @@ struct SubscriptionDetailView: View {
                         .foregroundColor(.secondary)
                 }
                 .padding()
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(.thinMaterial)
                 .cornerRadius(12)
-                
+
                 // Cost Breakdown
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Cost Breakdown")
@@ -328,9 +620,9 @@ struct SubscriptionDetailView: View {
                     DetailRow(label: "Annual cost", value: formatCurrency(subscription.annualCost))
                 }
                 .padding()
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(.thinMaterial)
                 .cornerRadius(12)
-                
+
                 // Notes
                 if let notes = subscription.notes, !notes.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -341,10 +633,10 @@ struct SubscriptionDetailView: View {
                             .font(.body)
                     }
                     .padding()
-                    .background(Color(NSColor.controlBackgroundColor))
+                    .background(.thinMaterial)
                     .cornerRadius(12)
                 }
-                
+
                 Spacer()
             }
             .padding()
@@ -355,13 +647,14 @@ struct SubscriptionDetailView: View {
 
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query private var accounts: [Account]
-    @Query(sort: [SortDescriptor(\BalanceEntry.entryDate, order: .reverse)]) 
+    @Query(sort: [SortDescriptor(\BalanceEntry.entryDate, order: .reverse)])
     private var balanceEntries: [BalanceEntry]
     @Query private var globalSettings: [GlobalSettings]
     @Query private var subscriptions: [Subscription]
     @Query private var paycheckConfigs: [PaycheckConfig]
-    
+
     @State private var safetyAmount: Decimal = 500
     @State private var selectedStrategy: PaymentStrategy = .avalanche
     @State private var nextPaycheckDate: Date = Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date()
@@ -474,7 +767,81 @@ struct DashboardView: View {
             Text("Financial Overview")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
+
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                compactKeyMetrics
+            } else {
+                regularKeyMetrics
+            }
+            #else
+            regularKeyMetrics
+            #endif
+        }
+    }
+
+    // iPhone: 2-column layout with custom ordering
+    private var compactKeyMetrics: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
+            // Row 1: Total Debt (spanning 2 columns - achieved by making it first)
+            MetricCard(
+                title: "Total Debt",
+                value: formatCurrency(totalDebt),
+                color: .red,
+                icon: "creditcard"
+            )
+            .gridCellColumns(2)
+
+            // Row 2: Total Assets | Net Worth
+            MetricCard(
+                title: "Total Assets",
+                value: formatCurrency(totalAssets),
+                color: .green,
+                icon: "banknote"
+            )
+
+            MetricCard(
+                title: "Net Worth",
+                value: formatCurrency(netWorth),
+                color: netWorth >= 0 ? .green : .red,
+                icon: "chart.line.uptrend.xyaxis"
+            )
+
+            // Row 3: Available Credit | Monthly Minimums
+            MetricCard(
+                title: "Available Credit",
+                value: formatCurrency(totalAvailableCredit),
+                color: .blue,
+                icon: "creditcard.circle"
+            )
+
+            MetricCard(
+                title: "Monthly Minimums",
+                value: formatCurrency(totalMinimumPayments),
+                color: .orange,
+                icon: "calendar"
+            )
+
+            // Row 4: Monthly Subscriptions | Credit Utilization
+            MetricCard(
+                title: "Monthly Subscriptions",
+                value: formatCurrency(totalMonthlySubscriptions),
+                color: .purple,
+                icon: "repeat"
+            )
+
+            MetricCard(
+                title: "Credit Utilization",
+                value: String(format: "%.1f%%", NSDecimalNumber(decimal: creditUtilization).doubleValue),
+                color: creditUtilization > 30 ? .red : .green,
+                icon: "percent"
+            )
+        }
+    }
+
+    // iPad/macOS: Original 3x3 grid
+    private var regularKeyMetrics: some View {
+        VStack(spacing: 16) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
                 MetricCard(
                     title: "Total Debt",
@@ -482,35 +849,35 @@ struct DashboardView: View {
                     color: .red,
                     icon: "creditcard"
                 )
-                
+
                 MetricCard(
                     title: "Total Assets",
                     value: formatCurrency(totalAssets),
                     color: .green,
                     icon: "banknote"
                 )
-                
+
                 MetricCard(
                     title: "Net Worth",
                     value: formatCurrency(netWorth),
                     color: netWorth >= 0 ? .green : .red,
                     icon: "chart.line.uptrend.xyaxis"
                 )
-                
+
                 MetricCard(
                     title: "Available Credit",
                     value: formatCurrency(totalAvailableCredit),
                     color: .blue,
                     icon: "creditcard.circle"
                 )
-                
+
                 MetricCard(
                     title: "Monthly Minimums",
                     value: formatCurrency(totalMinimumPayments),
                     color: .orange,
                     icon: "calendar"
                 )
-                
+
                 MetricCard(
                     title: "Credit Utilization",
                     value: String(format: "%.1f%%", NSDecimalNumber(decimal: creditUtilization).doubleValue),
@@ -518,7 +885,7 @@ struct DashboardView: View {
                     icon: "percent"
                 )
             }
-            
+
             // Second row - subscriptions and future features
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
                 MetricCard(
@@ -527,14 +894,14 @@ struct DashboardView: View {
                     color: .purple,
                     icon: "repeat"
                 )
-                
+
                 MetricCard(
                     title: "Income Sources",
                     value: "Coming Soon",
                     color: .secondary,
                     icon: "dollarsign.circle"
                 )
-                
+
                 MetricCard(
                     title: "Cash Flow",
                     value: "Coming Soon",
@@ -550,88 +917,199 @@ struct DashboardView: View {
             Text("Payment Strategy")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
-            VStack(alignment: .leading, spacing: 12) {
-                // Strategy selection and extra payment input
-                HStack {
-                    Picker("Strategy", selection: $selectedStrategy) {
-                        Text("Avalanche (Highest APR)").tag(PaymentStrategy.avalanche)
-                        Text("Snowball (Lowest Balance)").tag(PaymentStrategy.snowball)
-                    }
-                    .pickerStyle(.segmented)
-                    
-                    Spacer()
-                    
-                    VStack(alignment: .leading) {
-                        HStack {
-                            Text("Next Paycheck:")
-                            DatePicker("", selection: $nextPaycheckDate, displayedComponents: .date)
-                                .labelsHidden()
-                                .frame(width: 120)
-                        }
-                        HStack {
-                            Text("Second Paycheck:")
-                            DatePicker("", selection: $secondPaycheckDate, displayedComponents: .date)
-                                .labelsHidden()
-                                .frame(width: 120)
-                        }
-                        HStack {
-                            Text("Paycheck Amount:")
-                            TextField("$0", value: $nextPaycheckAmount, format: .currency(code: "USD"))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
-                        }
-                        HStack {
-                            Text("Safety Buffer:")
-                            TextField("$0", value: $safetyAmount, format: .currency(code: "USD"))
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Checking: \(formatCurrency(totalCheckingBalance)) - Safety: \(formatCurrency(safetyAmount))")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("Available for payments: \(formatCurrency(availableForPayments))")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundColor(availableForPayments > 0 ? .primary : .red)
-                            
-                            if period2Shortfall > 0 {
-                                Text("⚠️ Next paycheck shortfall: \(formatCurrency(period2Shortfall))")
-                                    .font(.caption)
-                                    .foregroundColor(.orange)
-                            }
-                            
-                            if isLongPaycheckPeriod {
-                                Text("⚠️ Long paycheck period - calculations may be unstable")
-                                    .font(.caption)
-                                    .foregroundColor(.red)
-                            }
-                        }
-                    }
-                }
-                
-                // Payment plan display
-                if !debtAccounts.isEmpty && availableForPayments > 0 {
-                    paymentPlanView
-                } else if debtAccounts.isEmpty {
-                    Text("No debt accounts found - you're debt free! 🎉")
-                        .foregroundColor(.secondary)
-                        .padding()
-                        .background(Color.green.opacity(0.1))
-                        .cornerRadius(8)
-                } else {
-                    Text("Enter an extra payment amount to see your payment strategy")
-                        .foregroundColor(.secondary)
-                        .italic()
-                }
+
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                compactPaymentStrategy
+            } else {
+                regularPaymentStrategy
             }
-            .padding()
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(12)
+            #else
+            regularPaymentStrategy
+            #endif
         }
     }
-    
+
+    // iPhone: Vertical stack layout
+    private var compactPaymentStrategy: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Strategy picker at top (full width)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Strategy")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                Picker("Strategy", selection: $selectedStrategy) {
+                    Text("Avalanche").tag(PaymentStrategy.avalanche)
+                    Text("Snowball").tag(PaymentStrategy.snowball)
+                }
+                .pickerStyle(.segmented)
+            }
+
+            // Paycheck inputs stacked
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Next Paycheck:")
+                        .font(.subheadline)
+                    Spacer()
+                    DatePicker("", selection: $nextPaycheckDate, displayedComponents: .date)
+                        .labelsHidden()
+                }
+
+                HStack {
+                    Text("Second Paycheck:")
+                        .font(.subheadline)
+                    Spacer()
+                    DatePicker("", selection: $secondPaycheckDate, displayedComponents: .date)
+                        .labelsHidden()
+                }
+
+                HStack {
+                    Text("Paycheck Amount:")
+                        .font(.subheadline)
+                    Spacer()
+                    TextField("$0", value: $nextPaycheckAmount, format: .currency(code: "USD"))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 120)
+                        .multilineTextAlignment(.trailing)
+                }
+
+                HStack {
+                    Text("Safety Buffer:")
+                        .font(.subheadline)
+                    Spacer()
+                    TextField("$0", value: $safetyAmount, format: .currency(code: "USD"))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 120)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+
+            // Summary info
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Checking: \(formatCurrency(totalCheckingBalance)) - Safety: \(formatCurrency(safetyAmount))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("Available for payments: \(formatCurrency(availableForPayments))")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(availableForPayments > 0 ? .primary : .red)
+
+                if period2Shortfall > 0 {
+                    Text("⚠️ Next paycheck shortfall: \(formatCurrency(period2Shortfall))")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+
+                if isLongPaycheckPeriod {
+                    Text("⚠️ Long paycheck period - calculations may be unstable")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+            }
+            .padding(.top, 4)
+
+            // Payment plan display
+            if !debtAccounts.isEmpty && availableForPayments > 0 {
+                paymentPlanView
+            } else if debtAccounts.isEmpty {
+                Text("No debt accounts found - you're debt free! 🎉")
+                    .foregroundColor(.secondary)
+                    .padding()
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(8)
+            } else {
+                Text("Enter an extra payment amount to see your payment strategy")
+                    .foregroundColor(.secondary)
+                    .italic()
+            }
+        }
+        .padding()
+        .background(.thinMaterial)
+        .cornerRadius(12)
+    }
+
+    // iPad/macOS: Original horizontal layout
+    private var regularPaymentStrategy: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Strategy selection and extra payment input
+            HStack {
+                Picker("Strategy", selection: $selectedStrategy) {
+                    Text("Avalanche (Highest APR)").tag(PaymentStrategy.avalanche)
+                    Text("Snowball (Lowest Balance)").tag(PaymentStrategy.snowball)
+                }
+                .pickerStyle(.segmented)
+
+                Spacer()
+
+                VStack(alignment: .leading) {
+                    HStack {
+                        Text("Next Paycheck:")
+                        DatePicker("", selection: $nextPaycheckDate, displayedComponents: .date)
+                            .labelsHidden()
+                            .frame(width: 120)
+                    }
+                    HStack {
+                        Text("Second Paycheck:")
+                        DatePicker("", selection: $secondPaycheckDate, displayedComponents: .date)
+                            .labelsHidden()
+                            .frame(width: 120)
+                    }
+                    HStack {
+                        Text("Paycheck Amount:")
+                        TextField("$0", value: $nextPaycheckAmount, format: .currency(code: "USD"))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                    }
+                    HStack {
+                        Text("Safety Buffer:")
+                        TextField("$0", value: $safetyAmount, format: .currency(code: "USD"))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Checking: \(formatCurrency(totalCheckingBalance)) - Safety: \(formatCurrency(safetyAmount))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("Available for payments: \(formatCurrency(availableForPayments))")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(availableForPayments > 0 ? .primary : .red)
+
+                        if period2Shortfall > 0 {
+                            Text("⚠️ Next paycheck shortfall: \(formatCurrency(period2Shortfall))")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        }
+
+                        if isLongPaycheckPeriod {
+                            Text("⚠️ Long paycheck period - calculations may be unstable")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
+            }
+
+            // Payment plan display
+            if !debtAccounts.isEmpty && availableForPayments > 0 {
+                paymentPlanView
+            } else if debtAccounts.isEmpty {
+                Text("No debt accounts found - you're debt free! 🎉")
+                    .foregroundColor(.secondary)
+                    .padding()
+                    .background(Color.green.opacity(0.1))
+                    .cornerRadius(8)
+            } else {
+                Text("Enter an extra payment amount to see your payment strategy")
+                    .foregroundColor(.secondary)
+                    .italic()
+            }
+        }
+        .padding()
+        .background(.thinMaterial)
+        .cornerRadius(12)
+    }
+
     private var paymentPlanView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("This Month's Payment Plan")
@@ -689,10 +1167,10 @@ struct DashboardView: View {
             }
         }
         .padding()
-        .background(Color(NSColor.textBackgroundColor))
+        .background(.ultraThinMaterial)
         .cornerRadius(8)
     }
-    
+
     private var historicalChartSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Net Worth Trend")
@@ -749,7 +1227,7 @@ struct DashboardView: View {
                     }
                 }
                 .padding()
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(.thinMaterial)
                 .cornerRadius(12)
             } else {
                 VStack(spacing: 12) {
@@ -767,7 +1245,7 @@ struct DashboardView: View {
                         .multilineTextAlignment(.center)
                 }
                 .padding(40)
-                .background(Color(NSColor.controlBackgroundColor))
+                .background(.thinMaterial)
                 .cornerRadius(12)
             }
         }
@@ -1075,7 +1553,7 @@ struct MetricCard: View {
                 .foregroundColor(color)
         }
         .padding()
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(.thinMaterial)
         .cornerRadius(8)
     }
 }

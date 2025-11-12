@@ -150,10 +150,12 @@ struct SettingsView: View {
                 .keyboardShortcut(.defaultAction)
             }
             .padding()
-            .background(Color(NSColor.windowBackgroundColor))
+            .background(.regularMaterial)
         }
         .navigationTitle("Settings")
+        #if os(macOS)
         .frame(width: 500, height: 400)
+        #endif
         .onAppear {
             loadCurrentSettings()
         }

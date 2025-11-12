@@ -62,8 +62,8 @@ struct SubscriptionFormView: View {
                 .buttonStyle(.borderedProminent)
             }
             .padding()
-            .background(Color(NSColor.windowBackgroundColor))
-            
+            .background(.regularMaterial)
+
             Divider()
             
             // Form content
